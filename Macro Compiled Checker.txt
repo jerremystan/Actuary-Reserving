@@ -1,0 +1,112 @@
+Sub ExcelChecker()
+    Application.DisplayAlerts = False
+    
+    Dim wsr As Worksheet
+    Dim wbr As Workbook
+    'Dim ws As Worksheet
+    
+    Dim newWB As Workbook
+    Dim newWS As Worksheet
+    
+    Dim wst As Worksheet
+    
+    
+    
+    Dim lastRow As Integer
+    
+    Dim wsrc As Worksheet
+    Dim wbrc As Workbook
+    
+    Dim fileName As Variant
+    
+
+    Dim k As Integer
+    Dim totalSheets As Integer
+    
+    Dim sheetNames As Variant
+    
+    
+    Set wst = ThisWorkbook.Sheets("Sheet1")
+    
+    lastRow = wst.Cells(wst.Rows.Count, 1).End(xlUp).Row - 1
+    
+    'MsgBox lastRow
+    
+    fileName = Array("OSClaim-Net", "PaidClaim-Gross", "PaidClaim-Net")
+    
+    
+    sheetNames = Array("Auto", "Auto-OD-PartialLoss", "Auto-OD-TotalLoss-MotorCycle", "Auto-OD-TotalLoss-NonMotorCycle", "Auto-TP", "Engineering", "Fire", "Marine-Other", "Marine-ECommerce", "Liability", "PA-Retail", "PA-Commercial", "Travel-Commercial", "Travel-Retail", "Trade Credit", "Various", "Health", "Various-Ecommerce", "Check")
+    
+    'MsgBox ColumnLetter(60)
+
+    For Each FN In fileName
+        
+        Application.Calculation = xlCalculationManual
+        
+        Set newWB = Workbooks.Add
+        'Set wbr = Workbooks.Open("D:\Stanley\Tugas IFRS17\Macro Checker for Compiled Files\" & FN & ".xlsx", UpdateLinks:=0)
+        'Set wbrc = Workbooks.Open("D:\Stanley\Tugas IFRS17\Macro Checker for Compiled Files\" & FN & " - Copy.xlsx", UpdateLinks:=0)
+        
+
+        
+        
+        
+'        For k = 1 To totalSheets
+'
+'            sheetNames(k) = wbrc.Sheets(k).Name
+'
+'        Next k
+
+        For Each SN In sheetNames
+
+            For i = 1 To lastRow
+
+                For j = 1 To lastRow + 1 - i
+
+                    wst.Range(ColumnLetter(j + 2) & (i + 1)).Formula = "='\\[Location]\202406\TMI\Compiled\[" & FN & ".xlsx]" & SN & "'!" & ColumnLetter(j + 2) & (i + 1) & "-'\\[Location]\202312\TMI\Compiled\[" & FN & ".xlsx]" & SN & "'!" & ColumnLetter(j + 2) & (i + 1)
+                    Debug.Print FN & SN & i & "-" & j
+                Next j
+
+            Next i
+
+            Set newWS = newWB.Sheets.Add(After:=newWB.Sheets(newWB.Sheets.Count))
+            newWS.Name = SN
+
+            wst.Range("A1:" & ColumnLetter(lastRow + 2) & lastRow + 1).Copy
+            newWS.Range("A1:" & ColumnLetter(lastRow + 2) & lastRow + 1).PasteSpecial Paste:=xlPasteAll
+
+        Next SN
+        
+        
+        newWB.Sheets("Sheet1").Delete
+        'newWB.Sheets("Fire-XL").Delete
+        
+        
+        newWB.SaveAs fileName:="D:\Stanley\Tugas IFRS17\Macro Checker for Compiled Files\" & FN & " - Checker.xlsx", FileFormat:=51
+        
+        Application.Calculation = xlCalculationAutomatic
+        
+        'wbr.Close SaveChanges:=False
+        'wbrc.Close SaveChanges:=False
+        
+        newWB.Close SaveChanges:=False
+
+
+    Next FN
+    
+    Application.DisplayAlerts = True
+
+End Sub
+
+Function ColumnLetter(ColumnNumber As Integer) As String
+    Dim Letter As String
+    Letter = ""
+
+    ' Repeat the process of dividing by 26 to get the column letters
+    Do While ColumnNumber > 0
+        Letter = Chr(((ColumnNumber - 1) Mod 26) + 65) & Letter
+        ColumnNumber = (ColumnNumber - 1) \ 26
+    Loop
+    
+    ColumnLetter = Letter
+End Function
