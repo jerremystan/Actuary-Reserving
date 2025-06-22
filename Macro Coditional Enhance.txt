@@ -1,0 +1,246 @@
+
+
+Public Sub ConditionalDiscountedCF()
+    
+    Dim rsSheets As ADODB.Recordset
+    Dim cfGreen As FormatCondition
+    Dim cfRed As FormatCondition
+    Dim ws As Worksheet
+    Dim SheetName As String
+    Dim i As Integer
+    
+    'Populating data
+    Set rsSheets = AddSheets
+    rsSheets.MoveFirst
+    If Not rsSheets.EOF Then
+        Do While Not rsSheets.EOF
+            
+            Set ws = ThisWorkbook.Worksheets(rsSheets.Fields("Sheet Name").Value)
+            
+            For i = 1 To 24
+                If i = 1 Then
+                    ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Delete
+                    
+                    Set cfGreen = ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Add(Type:=xlExpression, Formula1:="=ROUND(B" & 303 + i & ",0)=ROUND(I14,0)+ROUND(I15,0)")
+                    cfGreen.Interior.Color = RGB(218, 247, 166)
+                    
+                    Set cfRed = ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Add(Type:=xlExpression, Formula1:="=ROUND(B" & 303 + i & ",0)<>ROUND(I14,0)+ROUND(I15,0)")
+                    cfRed.Interior.Color = RGB(239, 154, 154)
+                Else
+                    ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Delete
+                    
+                    Set cfGreen = ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Add(Type:=xlExpression, Formula1:="=ROUND(B" & 303 + i & ",0)=ROUND(I" & 14 + i & ",0)")
+                    cfGreen.Interior.Color = RGB(218, 247, 166)
+                    
+                    Set cfRed = ws.Range("B" & 303 + i & ":B" & 303 + i).FormatConditions.Add(Type:=xlExpression, Formula1:="=ROUND(B" & 303 + i & ",0)<>ROUND(I" & 14 + i & ",0)")
+                    cfRed.Interior.Color = RGB(239, 154, 154)
+                End If
+            Next i
+            
+            rsSheets.MoveNext
+        Loop
+    End If
+    
+    MsgBox "End"
+
+End Sub
+Private Function AddSheets() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Reserving Class", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto_Gross"
+        .Fields("Reserving Class").Value = "Gross\Auto"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD PartialLoss Comb_Grs"
+        .Fields("Reserving Class").Value = "Gross\Auto\OD\Partial Loss"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Mcycle_Grs"
+        .Fields("Reserving Class").Value = "Gross\Auto\OD\Total Loss\Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Non-Mcycle_Grs"
+        .Fields("Reserving Class").Value = "Gross\Auto\OD\Total Loss\Non Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-TP_Grs"
+        .Fields("Reserving Class").Value = "Gross\Auto\TP"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Fire"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Eng-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Engineering"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce_Grs"
+        .Fields("Reserving Class").Value = "Gross\Marine\E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other_Grs"
+        .Fields("Reserving Class").Value = "Gross\Marine\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail_Grs"
+        .Fields("Reserving Class").Value = "Gross\PA\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial_Grs"
+        .Fields("Reserving Class").Value = "Gross\PA\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Liability"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail_Grs"
+        .Fields("Reserving Class").Value = "Gross\Travel\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial_Grs"
+        .Fields("Reserving Class").Value = "Gross\Travel\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "TradeCredit-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Trade Credit"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Health-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Health"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-All_Grs"
+        .Fields("Reserving Class").Value = "Gross\Various\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-Ecommerce_Grs"
+        .Fields("Reserving Class").Value = "Gross\Various\Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto_Net"
+        .Fields("Reserving Class").Value = "Net\Auto"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD PartialLoss Comb_Net"
+        .Fields("Reserving Class").Value = "Net\Auto\OD\Partial Loss"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Mcycle_Net"
+        .Fields("Reserving Class").Value = "Net\Auto\OD\Total Loss\Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Non-Mcycle_Net"
+        .Fields("Reserving Class").Value = "Net\Auto\OD\Total Loss\Non Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-TP_Net"
+        .Fields("Reserving Class").Value = "Net\Auto\TP"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire-All_Net"
+        .Fields("Reserving Class").Value = "Net\Fire"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Eng-All_Net"
+        .Fields("Reserving Class").Value = "Net\Engineering"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce_Net"
+        .Fields("Reserving Class").Value = "Net\Marine\E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other_Net"
+        .Fields("Reserving Class").Value = "Net\Marine\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail_Net"
+        .Fields("Reserving Class").Value = "Net\PA\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial_Net"
+        .Fields("Reserving Class").Value = "Net\PA\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability-All_Net"
+        .Fields("Reserving Class").Value = "Net\Liability"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail_Net"
+        .Fields("Reserving Class").Value = "Net\Travel\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial_Net"
+        .Fields("Reserving Class").Value = "Net\Travel\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "TradeCredit-All_Net"
+        .Fields("Reserving Class").Value = "Net\Trade Credit"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Health-All_Net"
+        .Fields("Reserving Class").Value = "Net\Health"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-All_Net"
+        .Fields("Reserving Class").Value = "Net\Various\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-Ecommerce_Net"
+        .Fields("Reserving Class").Value = "Net\Various\Commerce"
+        .Update
+    End With
+    
+    Set AddSheets = rs
+End Function
+
+
+
+
+
+
