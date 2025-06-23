@@ -1,0 +1,363 @@
+'Aktifkan Tools - References berikut
+'- ResQ3 Automation Tools
+'- Microsoft ActiveX Data Object 6.1 Library
+'Masukkan baris terakhir di triangle
+Private Const LastRow = 63
+Private Const ProjectName = "202503"
+Private Const PathName = "\\[Folder Name]\IBNR\" & ProjectName & "\Compiled\"
+
+Sub TriFormula()
+    
+    SwitchOff (True)
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    startTime = Now
+    
+    Dim wbEP As Workbook
+    Dim wbCC As Workbook
+    Dim wbPCG As Workbook
+    Dim wbPCN As Workbook
+    Dim wbOSG As Workbook
+    Dim wbOSN As Workbook
+    Dim wbUMLG As Workbook
+    Dim wbUMLN As Workbook
+    
+    Dim wbActive As Workbook
+    Dim TriName As String
+    Dim GrsNet As String
+    Dim ws As Worksheet
+    Dim Rumus As String
+    Dim Rumus2 As String
+    Dim result As Variant
+    Dim iRowSummary As Integer
+    Dim rsSheets As ADODB.Recordset
+    
+'    Set wbEP = Workbooks.Open(PathName & "Earned Premium.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbCC = Workbooks.Open(PathName & "Cummulative-Incurred-Occurrence.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbPCG = Workbooks.Open(PathName & "PaidClaim-Gross.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbPCN = Workbooks.Open(PathName & "PaidClaim-Net.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbOSG = Workbooks.Open(PathName & "OSClaim-Gross.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbOSN = Workbooks.Open(PathName & "OSClaim-Net.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbUMLG = Workbooks.Open(PathName & "Unrecorded.MajorLoss.OSClaim-Gross.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    Set wbUMLN = Workbooks.Open(PathName & "Unrecorded.MajorLoss.OSClaim-Net.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    
+    
+    Dim rsBooks As ADODB.Recordset: Set rsBooks = AddBooks
+    rsBooks.MoveFirst
+    
+    Do While Not rsBooks.EOF
+        'Pilih active workbook
+        Set wbActive = Workbooks(rsBooks.Fields("Book Name").Value)
+        wbActive.Activate
+        
+        'Cek apakah sudah Connect ke ResQ
+        If Not WorksheetExists("ResQ Settings") Then
+            MsgBox "Untuk workbook" & rsBooks.Fields("Book Name").Value & ", Connect and Login ke ResQ terlebih dahulu melalui Add-ins"
+            Exit Sub
+        End If
+        
+        'Tentukan jenis triangle dan reserving class gross/net
+        TriName = rsBooks.Fields("Triangle Name").Value
+        GrsNet = rsBooks.Fields("GrsNet").Value & "\"
+        
+        'Looping sheets
+        Set rsSheets = AddSheets
+        rsSheets.MoveFirst
+        
+        'Untuk Claim Counts, akan dibuat 2 triangle masing-masing untuk Gross dan Net
+        If TriName <> "Reported Claim Counts" Then
+            result = TriangleDifference(LastRow - 1, LastRow - 1)
+        Else
+            result = TriangleDifference(LastRow - 1, LastRow - 1, True)
+        End If
+        
+        Do While Not rsSheets.EOF
+            Set ws = wbActive.Worksheets(rsSheets.Fields("Sheet Name").Value)
+            'Untuk Paid Claims, setting cumulative = false
+            If TriName = "Paid Claims" Then
+                Rumus = "=ResQTri(""" & GrsNet & rsSheets.Fields("Reserving Class").Value & """,""" & TriName & """,FALSE,,,""" & ProjectName & """)"
+            ElseIf TriName <> "Reported Claim Counts" Then
+                Rumus = "=ResQTri(""" & GrsNet & rsSheets.Fields("Reserving Class").Value & """,""" & TriName & """,TRUE,,,""" & ProjectName & """)"
+            Else
+                Rumus = "=ResQTri(""" & "Gross\" & rsSheets.Fields("Reserving Class").Value & """,""" & TriName & """,TRUE,,,""" & ProjectName & """)"
+                Rumus2 = "=ResQTri(""" & "Net\" & rsSheets.Fields("Reserving Class").Value & """,""" & TriName & """,TRUE,,,""" & ProjectName & """)"
+            End If
+            
+            With ws
+                If TriName <> "Reported Claim Counts" Then
+                    .Range(.Cells(LastRow + 2, 3), .Cells(2 * LastRow, LastRow + 1)).FormulaArray = Rumus
+                    .Range(.Cells(2 * LastRow + 2, 3), .Cells(3 * LastRow, LastRow + 1)).FormulaR1C1 = result
+                Else
+                    .Range(.Cells(1 * LastRow + 2, 3), .Cells(2 * LastRow, LastRow + 1)).FormulaArray = Rumus
+                    .Range(.Cells(2 * LastRow + 2, 3), .Cells(3 * LastRow, LastRow + 1)).FormulaArray = Rumus2
+                    .Range(.Cells(3 * LastRow + 2, 3), .Cells(5 * LastRow, LastRow + 1)).FormulaR1C1 = result
+                End If
+                
+                Worksheets("ResQ Settings").Cells(iRowSummary, 5).Value = rsSheets.Fields("Sheet Name").Value
+                Worksheets("ResQ Settings").Cells(iRowSummary, 6).Value = SumAbsolute(.Range(.Cells(3 * LastRow + 2, 3), .Cells(5 * LastRow, LastRow + 1)))
+            End With
+            
+            iRowSummary = iRowSummary + 1
+            rsSheets.MoveNext
+        Loop
+        wbActive.Worksheets(1).Select
+        
+        rsBooks.MoveNext
+    Loop
+    
+'    wbEP.Close SaveChanges:=False
+'    wbCC.Close SaveChanges:=False
+'    wbPCG.Close SaveChanges:=False
+'    wbPCN.Close SaveChanges:=False
+'    wbOSG.Close SaveChanges:=False
+'    wbOSN.Close SaveChanges:=False
+'    wbUMLG.Close SaveChanges:=False
+'    wbUMLN.Close SaveChanges:=False
+
+    SwitchOff (False)
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+End Sub
+Private Function AddSheets() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Reserving Class", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD-PartialLoss"
+        .Fields("Reserving Class").Value = "Auto\OD\Partial Loss"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD-TotalLoss-MotorCycle"
+        .Fields("Reserving Class").Value = "Auto\OD\Total Loss\Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD-TotalLoss-NonMotorCycle"
+        .Fields("Reserving Class").Value = "Auto\OD\Total Loss\Non Motorcycle"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-TP"
+        .Fields("Reserving Class").Value = "Auto\TP"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire"
+        .Fields("Reserving Class").Value = "Fire"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Engineering"
+        .Fields("Reserving Class").Value = "Engineering"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce"
+        .Fields("Reserving Class").Value = "Marine\E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other"
+        .Fields("Reserving Class").Value = "Marine\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail"
+        .Fields("Reserving Class").Value = "PA\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial"
+        .Fields("Reserving Class").Value = "PA\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability"
+        .Fields("Reserving Class").Value = "Liability"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail"
+        .Fields("Reserving Class").Value = "Travel\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial"
+        .Fields("Reserving Class").Value = "Travel\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Trade Credit"
+        .Fields("Reserving Class").Value = "Trade Credit"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Health"
+        .Fields("Reserving Class").Value = "Health"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various"
+        .Fields("Reserving Class").Value = "Various\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-Ecommerce"
+        .Fields("Reserving Class").Value = "Various\Commerce"
+        .Update
+    End With
+    Set AddSheets = rs
+End Function
+Private Function AddBooks() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Book Name", adVarChar, 200
+        .Fields.Append "Triangle Name", adVarChar, 100
+        .Fields.Append "GrsNet", adVarChar, 10
+        .Open
+        
+        .AddNew
+        .Fields("Book Name").Value = "PaidClaim-Gross.xlsx"
+        .Fields("Triangle Name").Value = "Paid Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "PaidClaim-Net.xlsx"
+        .Fields("Triangle Name").Value = "Paid Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "OSClaim-Gross.xlsx"
+        .Fields("Triangle Name").Value = "Outstanding Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "OSClaim-Gross.xlsx"
+        .Fields("Triangle Name").Value = "Outstanding Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "Unrecorded.MajorLoss.OSClaim-Gross.xlsx"
+        .Fields("Triangle Name").Value = "Unrecorded Major Loss Outstanding Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "Unrecorded.MajorLoss.OSClaim-Net.xlsx"
+        .Fields("Triangle Name").Value = "Unrecorded Major Loss Outstanding Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+
+        .AddNew
+        .Fields("Book Name").Value = "Cummulative-Incurred-Occurrence.xlsx"
+        .Fields("Triangle Name").Value = "Reported Claim Counts"
+        .Fields("GrsNet").Value = "None"
+        .Update
+    End With
+    Set AddBooks = rs
+End Function
+Private Function TriangleDifference(rows As Integer, cols As Integer, Optional TwoTriangle As Boolean) As Variant
+    Dim arr() As Variant
+    Dim i As Integer, j As Integer
+    
+    ' Initialize a 2D array with rows and columns
+    If Not TwoTriangle Then
+        ReDim arr(1 To rows, 1 To cols)
+    Else
+        ReDim arr(1 To 2 * rows + 1, 1 To cols)
+    End If
+    
+    ' Fill the 2D array in a triangular pattern
+    For j = 1 To cols
+        For i = 1 To rows - (j - 1)
+            If Not TwoTriangle Then
+                arr(i, j) = "=R[-" & 2 * (rows + 1) & "]C-R[-" & rows + 1 & "]C"
+            Else
+                arr(i, j) = "=R[-" & 3 * (rows + 1) & "]C-R[-" & 2 * (rows + 1) & "]C"
+                arr(i + rows + 1, j) = "=R[-" & 4 * (rows + 1) & "]C-R[-" & 2 * (rows + 1) & "]C"
+            End If
+        Next i
+    Next j
+    
+    ' Return the 2D array
+    TriangleDifference = arr
+End Function
+Private Function SumAbsolute(rng As Range) As Double
+    Dim jumlah As Double: jumlah = 0
+    Dim sel As Range
+    For Each sel In rng
+        If IsNumeric(sel.Value) Then
+            jumlah = jumlah + Abs(sel.Value)
+        End If
+    Next sel
+    SumAbsolute = jumlah
+End Function
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+Private Sub SwitchOff(bSwitchOff As Boolean)
+    Dim ws As Worksheet
+    
+    With Application
+        If bSwitchOff Then
+            'OFF
+            .Calculation = xlCalculationManual
+            .ScreenUpdating = False
+            .EnableAnimations = False
+         
+            'switch off display pagebreaks for all worksheets
+            For Each ws In ThisWorkbook.Worksheets
+                ws.DisplayPageBreaks = False
+            Next ws
+        Else
+            'ON
+            .Calculation = xlCalculationAutomatic
+            .ScreenUpdating = True
+            .EnableAnimations = True
+        End If
+    End With
+End Sub
+Private Function WorksheetExists(wsName As String) As Boolean
+    Dim ws As Worksheet
+    WorksheetExists = False ' Set default value to False
+    
+    ' Loop through all worksheets in the workbook
+    For Each ws In ActiveWorkbook.Worksheets
+        If ws.Name = wsName Then
+            WorksheetExists = True ' If worksheet is found, return True
+            Exit Function ' Exit once the worksheet is found
+        End If
+    Next ws
+End Function
