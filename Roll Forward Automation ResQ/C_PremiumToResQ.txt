@@ -1,0 +1,285 @@
+Const cUltimatePremiums = "Ultimate Premiums"
+Private Const ValDate = "202503"
+Private Const Alamat = "\\[Folder Name]\IBNR\" & ValDate & "\Compiled\"
+
+Public Sub ProcessToTabular()
+    Dim columnCollection As Collection
+    Dim reservingClassLevel2Collection As Collection
+    Dim reservingClassLevel3Collection As Collection
+    Dim i As Integer
+    Dim iRow As Integer
+    Dim iCol As Integer
+    Dim iMaxRow As Integer
+    Dim iMaxCol As Integer
+    Dim dtMaxValuationDate As Date
+    Dim dtValuationDate As Date
+    Dim rs As ADODB.Recordset
+    Dim datasetType As String
+    Dim conn As ADODB.Connection
+    Dim strSQL As String
+    Dim GrossNet() As Variant
+    
+    Dim WB As Workbook
+    Dim ws As Worksheet
+    
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    'start time
+    startTime = Now
+    
+    Set conn = New ADODB.Connection
+    'Jika Macro error, lakukan hal berikut:
+    '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+    '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+    conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+    conn.CommandTimeout = 0
+    conn.CursorLocation = adUseClient
+    conn.Open
+    conn.Execute "delete from dbo.EarnedPremiums"
+    conn.Close
+    Set conn = Nothing
+    
+    Set WB = Workbooks.Open(Alamat & "Earned Premium.xlsx", UpdateLinks:=0, ReadOnly:=True)
+    Set ws = WB.Sheets("EP")
+    
+    GrossNet = Array("Gross", "Net")
+    
+    For Each cGrossNet In GrossNet
+    
+        Set columnCollection = AddColumnToCollection
+        Set reservingClassLevel2Collection = AddReservingClassLevel2Collection
+        Set reservingClassLevel3Collection = AddReservingClassLevel3Collection
+        Set reservingClassLevel4Collection = AddReservingClassLevel4Collection
+        Set reservingClassLevel5Collection = AddReservingClassLevel5Collection
+        Set rs = AddDatasetRecordset
+        
+        iMaxRow = 63
+        iMaxCol = 12
+        dtMaxValuationDate = "2025-03-31"
+        datasetType = cUltimatePremiums
+    
+        For i = 1 To columnCollection.Count
+            dtValuationDate = dtMaxValuationDate
+            For iRow = iMaxRow To 3 Step -1
+                If iRow < iMaxRow Then
+                    dtValuationDate = DateAdd("d", -1, DateAdd("m", -3, DateAdd("d", 1, dtValuationDate)))
+                End If
+                iCol = columnCollection.Item(i)
+                If UCase(Trim(cGrossNet)) = "NET" Then
+                    If columnCollection.Item(i) = 25 Then
+                        iCol = columnCollection.Item(i) + 1
+                    ElseIf columnCollection.Item(i) = 27 Then
+                        iCol = columnCollection.Item(i) + 1
+                    Else
+                        iCol = columnCollection.Item(i) + iMaxCol
+                    End If
+                End If
+                    
+                rs.AddNew
+                rs.Fields("Origin Date").Value = Format(dtValuationDate, "yyyy-MM-dd")
+                rs.Fields("Dataset Type").Value = datasetType
+                rs.Fields("Reserving Class Level 1").Value = cGrossNet
+                rs.Fields("Reserving Class Level 2").Value = reservingClassLevel2Collection(i)
+                rs.Fields("Reserving Class Level 3").Value = reservingClassLevel3Collection(i)
+                rs.Fields("Reserving Class Level 4").Value = reservingClassLevel4Collection(i)
+                rs.Fields("Reserving Class Level 5").Value = reservingClassLevel5Collection(i)
+                rs.Fields("Value").Value = ws.Cells(iRow, iCol + 2).Value
+                rs.Update
+            
+            Next iRow
+        Next i
+        If Not rs Is Nothing Then
+            rs.MoveFirst
+            Set conn = New ADODB.Connection
+            'Jika Macro error, lakukan hal berikut:
+            '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+            '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+            conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+            conn.CommandTimeout = 0
+            conn.CursorLocation = adUseClient
+            conn.Open
+            Do While Not rs.EOF
+                strSQL = "INSERT INTO dbo.EarnedPremiums(OriginDate, DatasetType, " & _
+                    "ReservingClassLevel1, ReservingClassLevel2, ReservingClassLevel3, ReservingClassLevel4, ReservingClassLevel5, Value) " & _
+                    "SELECT '" & _
+                    rs.Fields("Origin Date").Value & _
+                    "', '" & rs.Fields("Dataset Type").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 1").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 2").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 3").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 4").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 5").Value & _
+                    "', " & CStr(rs.Fields("Value").Value)
+                conn.Execute strSQL
+                rs.MoveNext
+            Loop
+            conn.Close
+            Set conn = Nothing
+            
+        End If
+    Next cGrossNet
+    
+    WB.Close SaveChanges:=False
+    
+    Set conn = New ADODB.Connection
+    'Jika Macro error, lakukan hal berikut:
+    '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+    '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+    conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+    conn.CommandTimeout = 0
+    conn.CursorLocation = adUseClient
+    conn.Open
+    conn.Execute "ALTER DATABASE TMI SET RECOVERY SIMPLE;"
+    conn.Execute "USE TMI;"
+    conn.Execute "DBCC SHRINKFILE (TMI_log, 0);"
+    conn.Close
+    Set conn = Nothing
+    
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+End Sub
+Private Function AddColumnToCollection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "1", "Auto"
+    coll.Add "4", "Fire"
+    coll.Add "5", "Engineering"
+    coll.Add "6", "Liability"
+    coll.Add "7", "PA-Retail"
+    coll.Add "8", "PA-Commercial"
+    coll.Add "9", "Travel-Retail"
+    coll.Add "10", "Travel-Commercial"
+    coll.Add "3", "Marine-Other"
+    coll.Add "2", "Marine-ECommerce"
+    coll.Add "12", "Various"
+    coll.Add "27", "Various-ECommerce"
+    coll.Add "11", "Trade Credit"
+    coll.Add "25", "Health"
+    
+    Set AddColumnToCollection = coll
+End Function
+Private Function AddReservingClassLevel2Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "Auto", "Auto"
+    coll.Add "Fire", "Fire"
+    coll.Add "Engineering", "Engineering"
+    coll.Add "Liability", "Liability"
+    coll.Add "PA", "PA-Retail"
+    coll.Add "PA", "PA-Commercial"
+    coll.Add "Travel", "Travel-Retail"
+    coll.Add "Travel", "Travel-Commercial"
+    coll.Add "Marine", "Marine-Other"
+    coll.Add "Marine", "Marine-ECommerce"
+    coll.Add "Various", "Various-Other"
+    coll.Add "Various", "Various-ECommerce"
+    coll.Add "Trade Credit", "Trade Credit"
+    coll.Add "Health", "Health"
+    
+    Set AddReservingClassLevel2Collection = coll
+End Function
+Private Function AddReservingClassLevel3Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "", "Auto"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "Retail", "PA-Retail"
+    coll.Add "Commercial", "PA-Commercial"
+    coll.Add "Retail", "Travel-Retail"
+    coll.Add "Commercial", "Travel-Commercial"
+    coll.Add "Non E-Commerce", "Marine-Other"
+    coll.Add "E-Commerce", "Marine-ECommerce"
+    coll.Add "Non E-Commerce", "Various-Other"
+    coll.Add "Commerce", "Various-ECommerce"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    
+    Set AddReservingClassLevel3Collection = coll
+End Function
+Private Function AddReservingClassLevel4Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "", "Auto"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "", "PA-Retail"
+    coll.Add "", "PA-Commercial"
+    coll.Add "", "Travel-Retail"
+    coll.Add "", "Travel-Commercial"
+    coll.Add "", "Marine-Other"
+    coll.Add "", "Marine-ECommerce"
+    coll.Add "", "Various-Other"
+    coll.Add "", "Various-ECommerce"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    
+    Set AddReservingClassLevel4Collection = coll
+End Function
+Private Function AddReservingClassLevel5Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "", "Auto"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "", "PA-Retail"
+    coll.Add "", "PA-Commercial"
+    coll.Add "", "Travel-Retail"
+    coll.Add "", "Travel-Commercial"
+    coll.Add "", "Marine-Other"
+    coll.Add "", "Marine-ECommerce"
+    coll.Add "", "Various-Other"
+    coll.Add "", "Various-ECommerce"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    
+    Set AddReservingClassLevel5Collection = coll
+End Function
+Private Function AddDatasetRecordset() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    
+    Set rs = New ADODB.Recordset
+    Set rs.ActiveConnection = Nothing
+    rs.CursorLocation = adUseClient
+    
+    rs.Fields.Append "Origin Date", adVarChar, 10
+    rs.Fields.Append "Dataset Type", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 1", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 2", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 3", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 4", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 5", adVarChar, 50
+    rs.Fields.Append "Value", adNumeric
+    rs.Fields("Value").Precision = 30
+    rs.Fields("Value").NumericScale = 5
+    rs.Open
+    Set AddDatasetRecordset = rs
+End Function
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+
+
+
