@@ -1,6 +1,6 @@
 'Macro ini untuk melakukan Refresh Data ke ResQ
 
-Private Const c_TMI = "202503 v.9.00 - RCH (Reserving)"
+Private Const c_ = "202503 v.9.00 - RCH (Reserving)"
 Private Const c_Projects = "202503"
 Private Const c_User = "Master"
 Private Const c_Pass = ""
@@ -44,7 +44,7 @@ Sub CompileToResQ()
     'Looping Folder
     GNArr = Array("Gross", "Net")
 
-    Call resQ.ConnectByName(c_TMI, c_User, c_Pass)
+    Call resQ.ConnectByName(c_, c_User, c_Pass)
     Set projectResQ = resQ.Projects(c_Projects)
     
     'Looping Sheets
