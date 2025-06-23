@@ -1,0 +1,374 @@
+Private Const ValDate = "202503"
+Private Const Alamat = "\\[Folder Name]\" & ValDate & "\Compiled\"
+
+Public Sub ProcessToTabular()
+    Dim sheetCollection As Collection
+    Dim reservingClassLevel2Collection As Collection
+    Dim reservingClassLevel3Collection As Collection
+    Dim i As Integer
+    Dim iRow As Integer
+    Dim iCol As Integer
+    Dim iMaxRow As Integer
+    Dim dtMaxValuationDate As Date
+    Dim dtValuationDate As Date
+    Dim dtDevelopmentDate As Date
+    Dim rs As ADODB.Recordset
+    Dim datasetType As String
+    Dim conn As ADODB.Connection
+    Dim strSQL As String
+    Dim cGrossNet As String
+    Dim cummulative As Double
+    Dim WB As Workbook
+    
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    'start time
+    startTime = Now
+    
+    Set conn = New ADODB.Connection
+    'Jika Macro error, lakukan hal berikut:
+    '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+    '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+    conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+    conn.CommandTimeout = 0
+    conn.CursorLocation = adUseClient
+    conn.Open
+    conn.Execute "delete from dbo.Claims"
+    conn.Close
+    Set conn = Nothing
+    
+    Set wbname = RunWorkbook
+    wbname.MoveFirst
+    
+    iMaxRow = 63
+    dtMaxValuationDate = "2025-03-31"
+    
+    Do While Not wbname.EOF
+        Set WB = Workbooks.Open(Alamat & wbname.Fields("WB Name").Value, ReadOnly:=True, UpdateLinks:=0)
+        datasetType = wbname.Fields("datasetType").Value
+        cGrossNet = wbname.Fields("GrsNet").Value
+        
+        Set sheetCollection = AddSheetToCollection
+        Set reservingClassLevel2Collection = AddReservingClassLevel2Collection
+        Set reservingClassLevel3Collection = AddReservingClassLevel3Collection
+        Set reservingClassLevel4Collection = AddReservingClassLevel4Collection
+        Set reservingClassLevel5Collection = AddReservingClassLevel5Collection
+        Set rs = AddDatasetRecordset
+        
+        For i = 1 To sheetCollection.Count
+            dtValuationDate = dtMaxValuationDate
+            For iRow = iMaxRow To 2 Step -1
+                If iRow < iMaxRow Then
+                    dtValuationDate = DateAdd("d", -1, DateAdd("m", -3, DateAdd("d", 1, dtValuationDate)))
+                End If
+                cummulative = 0#
+                For iCol = 1 To iMaxRow - iRow + 1
+                    dtDevelopmentDate = DateAdd("d", -1, DateAdd("m", (iCol - 1) * 3#, DateAdd("d", 1, dtValuationDate)))
+                    rs.AddNew
+                    rs.Fields("Origin Date").Value = Format(dtValuationDate, "yyyy-MM-dd")
+                    rs.Fields("Development Date").Value = Format(dtDevelopmentDate, "yyyy-MM-dd")
+                    rs.Fields("Dataset Type").Value = datasetType
+                    rs.Fields("Reserving Class Level 1").Value = cGrossNet
+                    rs.Fields("Reserving Class Level 2").Value = reservingClassLevel2Collection(i)
+                    rs.Fields("Reserving Class Level 3").Value = reservingClassLevel3Collection(i)
+                    rs.Fields("Reserving Class Level 4").Value = reservingClassLevel4Collection(i)
+                    rs.Fields("Reserving Class Level 5").Value = reservingClassLevel5Collection(i)
+                    cummulative = cummulative + CDbl(WB.Worksheets(sheetCollection(i)).Cells(iRow, iCol + 2).Value)
+                    If Left(datasetType, 4) = "Paid" Then
+                        rs.Fields("Value").Value = cummulative
+                    Else
+                        rs.Fields("Value").Value = WB.Worksheets(sheetCollection(i)).Cells(iRow, iCol + 2).Value
+                    End If
+                    rs.Update
+                Next iCol
+            Next iRow
+        Next i
+        
+        If Not rs Is Nothing Then
+            rs.MoveFirst
+            
+            Set conn = New ADODB.Connection
+            'Jika Macro error, lakukan hal berikut:
+            '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+            '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+            conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+            conn.CommandTimeout = 0
+            conn.CursorLocation = adUseClient
+            conn.Open
+
+            Do While Not rs.EOF
+                strSQL = "INSERT INTO dbo.Claims(OriginDate, DevelopmentDate, DatasetType" & _
+                ", ReservingClassLevel1, ReservingClassLevel2, ReservingClassLevel3, ReservingClassLevel4, ReservingClassLevel5, Value) " & _
+                    "SELECT '" & _
+                    rs.Fields("Origin Date").Value & _
+                    "', '" & rs.Fields("Development Date").Value & _
+                    "', '" & rs.Fields("Dataset Type").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 1").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 2").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 3").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 4").Value & _
+                    "', '" & rs.Fields("Reserving Class Level 5").Value & _
+                    "', " & CStr(rs.Fields("Value").Value)
+                conn.Execute strSQL
+                rs.MoveNext
+            Loop
+
+            conn.Close
+            Set conn = Nothing
+        End If
+        
+        WB.Close SaveChanges:=False
+        
+        wbname.MoveNext
+    Loop
+    
+    Set conn = New ADODB.Connection
+    'Jika Macro error, lakukan hal berikut:
+    '1. Buka SQL Server Management, jalankan query: Select @@SERVERNAME
+    '2. Copas hasil query ke dalam Data Source di baris bawah ini, misal Data Source=NB08230005
+    conn.ConnectionString = "Provider=MSOLEDBSQL;Data Source=.;Initial Catalog=TMI;Trusted_Connection=yes;"
+    conn.CommandTimeout = 0
+    conn.CursorLocation = adUseClient
+    conn.Open
+    conn.Execute "ALTER DATABASE TMI SET RECOVERY SIMPLE;"
+    conn.Execute "USE TMI;"
+    conn.Execute "DBCC SHRINKFILE (TMI_log, 0);"
+    conn.Close
+    Set conn = Nothing
+    
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+    
+End Sub
+Private Function AddSheetToCollection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "Auto-OD-PartialLoss", "Auto-OD-PartialLoss"
+    coll.Add "Auto-OD-TotalLoss-MotorCycle", "Auto-OD-TotalLoss-MotorCycle"
+    coll.Add "Auto-OD-TotalLoss-NonMotorCycle", "Auto-OD-TotalLoss-NonMotorCycle"
+    coll.Add "Auto-TP", "Auto-TP"
+    coll.Add "Fire", "Fire"
+    coll.Add "Engineering", "Engineering"
+    coll.Add "Liability", "Liability"
+    coll.Add "PA-Retail", "PA-Retail"
+    coll.Add "PA-Commercial", "PA-Commercial"
+    coll.Add "Travel-Retail", "Travel-Retail"
+    coll.Add "Travel-Commercial", "Travel-Commercial"
+    coll.Add "Marine-Other", "Marine-Other"
+    coll.Add "Marine-ECommerce", "Marine-ECommerce"
+    coll.Add "Various", "Various-Other"
+    coll.Add "Trade Credit", "Trade Credit"
+    coll.Add "Health", "Health"
+    coll.Add "Various-ECommerce", "Various-ECommerce"
+    
+    Set AddSheetToCollection = coll
+End Function
+
+Private Function AddReservingClassLevel2Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "Auto", "Auto-OD-PartialLoss"
+    coll.Add "Auto", "Auto-OD-TotalLoss-MotorCycle"
+    coll.Add "Auto", "Auto-OD-TotalLoss-NonMotorCycle"
+    coll.Add "Auto", "Auto-TP"
+    coll.Add "Fire", "Fire"
+    coll.Add "Engineering", "Engineering"
+    coll.Add "Liability", "Liability"
+    coll.Add "PA", "PA-Retail"
+    coll.Add "PA", "PA-Commercial"
+    coll.Add "Travel", "Travel-Retail"
+    coll.Add "Travel", "Travel-Commercial"
+    coll.Add "Marine", "Marine-Other"
+    coll.Add "Marine", "Marine-ECommerce"
+    coll.Add "Various", "Various-Other"
+    coll.Add "Trade Credit", "Trade Credit"
+    coll.Add "Health", "Health"
+    coll.Add "Various", "Various-ECommerce"
+    
+    Set AddReservingClassLevel2Collection = coll
+End Function
+
+Private Function AddReservingClassLevel3Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "OD", "Auto-OD-PartialLoss"
+    coll.Add "OD", "Auto-OD-TotalLoss-MotorCycle"
+    coll.Add "OD", "Auto-OD-TotalLoss-NonMotorCycle"
+    coll.Add "TP", "Auto-TP"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "Retail", "PA-Retail"
+    coll.Add "Commercial", "PA-Commercial"
+    coll.Add "Retail", "Travel-Retail"
+    coll.Add "Commercial", "Travel-Commercial"
+    coll.Add "Non E-Commerce", "Marine-Other"
+    coll.Add "E-Commerce", "Marine-ECommerce"
+    coll.Add "Non E-Commerce", "Various-Other"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    coll.Add "Commerce", "Various-ECommerce"
+    
+    Set AddReservingClassLevel3Collection = coll
+End Function
+
+Private Function AddReservingClassLevel4Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "Partial Loss", "Auto-OD-PartialLoss"
+    coll.Add "Total Loss", "Auto-OD-TotalLoss-MotorCycle"
+    coll.Add "Total Loss", "Auto-OD-TotalLoss-NonMotorCycle"
+    coll.Add "", "Auto-TP"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "", "PA-Retail"
+    coll.Add "", "PA-Commercial"
+    coll.Add "", "Travel-Retail"
+    coll.Add "", "Travel-Commercial"
+    coll.Add "", "Marine-Other"
+    coll.Add "", "Marine-ECommerce"
+    coll.Add "", "Various-Other"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    coll.Add "", "Various-ECommerce"
+    
+    Set AddReservingClassLevel4Collection = coll
+End Function
+
+Private Function AddReservingClassLevel5Collection() As Collection
+    Dim coll As New Collection
+    
+    coll.Add "", "Auto-OD-PartialLoss"
+    coll.Add "Motorcycle", "Auto-OD-TotalLoss-MotorCycle"
+    coll.Add "Non Motorcycle", "Auto-OD-TotalLoss-NonMotorCycle"
+    coll.Add "", "Auto-TP"
+    coll.Add "", "Fire"
+    coll.Add "", "Engineering"
+    coll.Add "", "Liability"
+    coll.Add "", "PA-Retail"
+    coll.Add "", "PA-Commercial"
+    coll.Add "", "Travel-Retail"
+    coll.Add "", "Travel-Commercial"
+    coll.Add "", "Marine-Other"
+    coll.Add "", "Marine-ECommerce"
+    coll.Add "", "Various-Other"
+    coll.Add "", "Trade Credit"
+    coll.Add "", "Health"
+    coll.Add "", "Various-ECommerce"
+    
+    Set AddReservingClassLevel5Collection = coll
+End Function
+
+
+Private Function AddDatasetRecordset() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    
+    Set rs = New ADODB.Recordset
+    Set rs.ActiveConnection = Nothing
+    rs.CursorLocation = adUseClient
+    
+    rs.Fields.Append "Origin Date", adVarChar, 10
+    rs.Fields.Append "Development Date", adVarChar, 10
+    rs.Fields.Append "Dataset Type", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 1", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 2", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 3", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 4", adVarChar, 50
+    rs.Fields.Append "Reserving Class Level 5", adVarChar, 50
+    rs.Fields.Append "Value", adNumeric
+    rs.Fields("Value").Precision = 30
+    rs.Fields("Value").NumericScale = 5
+    rs.Open
+    Set AddDatasetRecordset = rs
+End Function
+Private Function RunWorkbook() As ADODB.Recordset
+
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "WB Name", adVarChar, 200
+        .Fields.Append "datasetType", adVarChar, 200
+        .Fields.Append "GrsNet", adVarChar, 5
+        .Open
+        
+        .AddNew
+        .Fields("WB Name").Value = "OSClaim-Gross.xlsx"
+        .Fields("datasetType").Value = "Outstanding Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("WB Name").Value = "OSClaim-Net.xlsx"
+        .Fields("datasetType").Value = "Outstanding Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+        
+        .AddNew
+        .Fields("WB Name").Value = "PaidClaim-Gross.xlsx"
+        .Fields("datasetType").Value = "Paid Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("WB Name").Value = "PaidClaim-Net.xlsx"
+        .Fields("datasetType").Value = "Paid Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+        .AddNew
+        .Fields("WB Name").Value = "Unrecorded.MajorLoss.OSClaim-Gross.xlsx"
+        .Fields("datasetType").Value = "Unrecorded Major Loss Outstanding Claims"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("WB Name").Value = "Unrecorded.MajorLoss.OSClaim-Net.xlsx"
+        .Fields("datasetType").Value = "Unrecorded Major Loss Outstanding Claims"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+
+        .AddNew
+        .Fields("WB Name").Value = "Cummulative-Incurred-Occurrence.xlsx"
+        .Fields("datasetType").Value = "Reported Claim Counts"
+        .Fields("GrsNet").Value = "Gross"
+        .Update
+
+        .AddNew
+        .Fields("WB Name").Value = "Cummulative-Incurred-Occurrence.xlsx"
+        .Fields("datasetType").Value = "Reported Claim Counts"
+        .Fields("GrsNet").Value = "Net"
+        .Update
+
+    End With
+    
+    Set RunWorkbook = rs
+
+End Function
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+
+
+
