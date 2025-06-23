@@ -1,0 +1,264 @@
+
+Private Const c_ = "202412 v.6.00 - Engineering"
+Private Const c_Projects = "202412"
+Private Const c_User = "Master"
+Private Const ValDate = "202412"
+Private Const ValRate = "2024-12-31"
+Private Const c_Pass = ""
+Private Const RateName = "202412"
+'Private Const Alamat = "D:\Stanley\Tugas IFRS17\ IBNR Preparation IFRS17 R\Compiled IFRS17\202406"
+
+Private Const IntRate = "\[Folder Location]\InterestRate.v16.xlsx"
+
+
+Sub MacroTemplate()
+    SwitchOff (True)
+
+    Dim resQ As New ResQApplication
+    Dim projectResQ As xResQProject
+    Dim linkRow As Integer
+    Dim resRow As Integer
+    Dim SelUlt As xResultSelection
+    Dim sheetName As String
+    Dim ArrayGN As Variant
+    Dim CF As xCashflowProjection
+    Dim lastRow As Long
+    Dim lastCol As Long
+    Dim wsRate As Worksheet
+    Dim wsTemp As Worksheet
+    Dim ListR As Object ' Assuming ListR is a Recordset object
+    Dim GN As Variant
+    Dim wsRes As Worksheet
+    Dim SavePath As String
+    
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    startTime = Now
+
+    Set wsRate = Workbooks.Open(IntRate, UpdateLinks:=0).Sheets("Rate")
+    lastRow = wsRate.Cells(wsRate.Rows.Count, "A").End(xlUp).Row
+    lastCol = wsRate.Cells(1, wsRate.Columns.Count).End(xlToLeft).Column
+
+    If wsRate.AutoFilterMode Then
+        wsRate.AutoFilterMode = False
+    End If
+
+    wsRate.Range(wsRate.Cells(1, 1), wsRate.Cells(lastRow, lastCol)).AutoFilter Field:=1, Criteria1:=ValRate
+    wsRate.Range(wsRate.Cells(1, 1), wsRate.Cells(lastRow, lastCol)).AutoFilter Field:=2, Criteria1:="IDR"
+
+    Set wsTemp = Workbooks.Open(IntRate, UpdateLinks:=0).Sheets.Add
+    wsTemp.Name = "Temp"
+
+    wsRate.Range(wsRate.Cells(1, 1), wsRate.Cells(lastRow, lastCol)).SpecialCells(xlCellTypeVisible).Copy
+    wsTemp.Range("A1").PasteSpecial Paste:=xlPasteValues
+
+    lastRow = wsTemp.Cells(wsRate.Rows.Count, "A").End(xlUp).Row
+    lastCol = wsTemp.Cells(1, wsRate.Columns.Count).End(xlToLeft).Column
+
+    wsTemp.Cells(1, 6).Value = "Month"
+    For i = 2 To lastRow
+
+        wsTemp.Cells(i, 6).Value = wsTemp.Cells(i, 3) * 6 / 0.5
+
+    Next i
+
+    Call resQ.ConnectByName(c_, c_User, c_Pass)
+    Set projectResQ = resQ.Projects(c_Projects)
+    
+    With projectResQ.DiscountingYieldCurves.Add
+
+        .Name = RateName
+        .PeriodLength = 6
+        .AsAtDate = DateAdd("d", 1, CDate(ValRate))
+        For j = 2 To lastRow
+
+            Call .AddData(wsTemp.Cells(j, 6).Value, 0.01 * wsTemp.Cells(j, 4).Value)
+
+        Next j
+        .InterpolationMethod = imLinear
+        .Save
+
+    End With
+    
+    'ArrayGN = Array("Gross-IFRS17", "Net-IFRS17", "Net-wo-XL-IFRS17")
+    ArrayGN = Array("Gross", "Net")
+    
+    Set ListR = ReservingList
+    
+    For Each GN In ArrayGN
+        
+        ListR.MoveFirst
+        
+        Do While Not ListR.EOF
+            
+            Debug.Print GN & ListR.Fields("ResQ Path").Value
+            Set CF = projectResQ.ReservingClasses(GN & ListR.Fields("ResQ Path").Value).Vectors("Cashflow Projection (YC)").Method
+            
+            CF.DiscountRateSource = dsProject
+            CF.DiscountRateYieldCurve = projectResQ.DiscountingYieldCurves.Item(RateName)
+            CF.Save
+        
+            ListR.MoveNext
+        Loop
+    
+    Next GN
+    
+    resQ.Disconnect
+        
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+    
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+    
+    SwitchOff (False)
+End Sub
+
+
+Private Function ReservingList() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name CL", adVarChar, 200
+        .Fields.Append "ResQ Path", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Auto-OD PartialLoss Comb"
+        .Fields("ResQ Path").Value = "\Auto\OD\Partial Loss"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Auto-OD TotLoss_Mcycle"
+        .Fields("ResQ Path").Value = "\Auto\OD\Total Loss\Motorcycle"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Auto-OD TotLoss_Non-Mcycle"
+        .Fields("ResQ Path").Value = "\Auto\OD\Total Loss\Non Motorcycle"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Auto-TP"
+        .Fields("ResQ Path").Value = "\Auto\TP"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Auto"
+        .Fields("ResQ Path").Value = "\Auto"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Eng-All"
+        .Fields("ResQ Path").Value = "\Engineering"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Fire-All"
+        .Fields("ResQ Path").Value = "\Fire"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Marine-Other"
+        .Fields("ResQ Path").Value = "\Marine\Non E-Commerce"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Marine-ECommerce"
+        .Fields("ResQ Path").Value = "\Marine\E-Commerce"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Liability-All"
+        .Fields("ResQ Path").Value = "\Liability"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "PA-Retail"
+        .Fields("ResQ Path").Value = "\PA\Retail"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "PA-Commercial"
+        .Fields("ResQ Path").Value = "\PA\Commercial"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Travel-Commercial"
+        .Fields("ResQ Path").Value = "\Travel\Commercial"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Travel-Retail"
+        .Fields("ResQ Path").Value = "\Travel\Retail"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "TradeCredit-All"
+        .Fields("ResQ Path").Value = "\Trade Credit"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Various-All"
+        .Fields("ResQ Path").Value = "\Various\Non E-Commerce"
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Health-All"
+        .Fields("ResQ Path").Value = "\Health"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name CL").Value = "Various-ECommerce"
+        .Fields("ResQ Path").Value = "\Various\Commerce"
+        .Update
+        
+    End With
+    
+    Set ReservingList = rs
+End Function
+
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+Private Sub SwitchOff(bSwitchOff As Boolean)
+    Dim ws As Worksheet
+    
+    With Application
+        If bSwitchOff Then
+            'OFF
+            .Calculation = xlCalculationManual
+            .ScreenUpdating = False
+            .EnableAnimations = False
+         
+            'switch off display pagebreaks for all worksheets
+            For Each ws In ThisWorkbook.Worksheets
+                ws.DisplayPageBreaks = False
+            Next ws
+        Else
+            'ON
+            .Calculation = xlCalculationAutomatic
+            .ScreenUpdating = True
+            .EnableAnimations = True
+        End If
+    End With
+End Sub
