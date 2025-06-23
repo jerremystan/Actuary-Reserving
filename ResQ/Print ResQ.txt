@@ -1,0 +1,1542 @@
+Option Explicit
+Private Const c_ = "202503 v.5.00"
+Private Const c_Projects = "202503"
+Private Const c_User = "Master"
+Private Const c_Pass = ""
+Private Const MajorLoss = True
+Private Const YY = 2025
+Private Const QQ = 1
+Private Const AdjustmentDFM = False
+
+Private Const YieldCurve = ""
+'Fill Sensitivity with "" for Reserving
+'Fill Senstivity with " (YC)" for Yield Curve but Run Module 'YC' First
+
+Private Const Sensitivity = ""
+'Fill Sensitivity with "" for Reserving
+'Fill Senstivity with " +5% Sensitivity" for +5% Sensitivity
+'Fill Senstivity with " -5% Sensitivity" for -5% Sensitivity
+
+
+Sub SwitchOff(bSwitchOff As Boolean)
+    Dim WS As Worksheet
+    
+    With Application
+        If bSwitchOff Then
+            'OFF
+            .Calculation = xlCalculationManual
+            .ScreenUpdating = False
+            .EnableAnimations = False
+         
+            'switch off display pagebreaks for all worksheets
+            For Each WS In ThisWorkbook.Worksheets
+                WS.DisplayPageBreaks = False
+            Next WS
+        Else
+            'ON
+            .Calculation = xlCalculationAutomatic
+            .ScreenUpdating = True
+            .EnableAnimations = True
+        End If
+    End With
+End Sub
+
+
+
+Public Sub PostResults()
+    
+    FormulaFormatAvE (QQ)
+    SwitchOff (True)
+    
+    Dim rsSheets As ADODB.Recordset
+    Dim rsType As ADODB.Recordset
+    Dim resQ As New ResQApplication
+    Dim projectResQ As xResQProject
+    Dim reservingClassResQ As xReservingClass
+    Dim i As Integer
+    Dim j As Integer
+    Dim DFMPaid As xDFMMethod
+    Dim DFMIncurred As xDFMMethod
+    Dim SelectedUltimate As xResultSelection
+    Dim SelectedUltimateYE As xResultSelection
+    Dim CashFlow As xCashflowProjection
+    Dim CashFlowML As xCashflowProjection
+    Dim SR As Integer
+    Dim iUserEntryPaid As Integer
+    Dim iUserEntryInc As Integer
+    Dim WSAvE As String
+    Dim WS As Worksheet
+    Dim SumPriorPaid As Double
+    Dim SumPriorOS As Double
+    Dim wsAuto As Worksheet
+    Dim isAuto As Boolean
+    Dim temp As Double
+    Dim AvEValueTemp As Double
+    
+    Dim sheetName As String
+    Dim resQPath As String
+    
+    Dim wsDisc As Worksheet
+    Dim nDisc As Integer
+    
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    startTime = Now
+    
+    SetAuto0
+
+Set rsType = ReservingType
+rsType.MoveFirst
+
+If Not rsType.EOF Then
+
+Do While Not rsType.EOF
+
+    Set rsSheets = AddSheets
+    rsSheets.MoveFirst
+
+    If Not rsSheets.EOF Then
+        Call resQ.ConnectByName(c_, c_User, c_Pass)
+
+        Set projectResQ = resQ.Projects(c_Projects)
+
+        Do While Not rsSheets.EOF
+            
+            sheetName = rsSheets.Fields("Sheet Name").Value & rsType.Fields("Sheet Ext").Value
+            If rsType.Fields("Name").Value = "Gross" And rsSheets.Fields("Sheet Name").Value = "Auto_" Then
+                sheetName = rsSheets.Fields("Sheet Name").Value & "_Gross"
+            End If
+             
+            Select Case rsType.Fields("Name").Value
+            Case "Gross Attritional Losses", "Gross Large Losses", "Non XL RI Attritional Losses", "Non XL RI Large Losses", "XL RI", "Non XL RI"
+                Select Case rsSheets.Fields("Sheet Name").Value
+                Case "Auto-OD PartialLoss Comb_", "Auto-OD TotLoss_Mcycle_", "Auto-OD TotLoss_Non-Mcycle_", "Auto-TP_"
+                    resQPath = rsType.Fields("Name").Value & "\Auto"
+                    sheetName = "Auto_" & rsType.Fields("Sheet Ext").Value
+                Case Else
+                    resQPath = rsType.Fields("Name").Value & rsSheets.Fields("Reserving Class").Value
+                End Select
+            Case Else
+                resQPath = rsType.Fields("Name").Value & rsSheets.Fields("Reserving Class").Value
+            End Select
+            
+            Set reservingClassResQ = projectResQ.ReservingClasses(resQPath)
+            Set DFMPaid = reservingClassResQ.Vectors("DFM Paid Claims Ultimate").Method
+            Set DFMIncurred = reservingClassResQ.Vectors("DFM Incurred Claims Ultimate").Method
+            Set SelectedUltimate = reservingClassResQ.Vectors("Selected Claim Amounts Ultimate").Method
+            Set CashFlowML = reservingClassResQ.Vectors("Cashflow Projection" & YieldCurve & Sensitivity).Method
+            Set CashFlow = reservingClassResQ.Vectors("Cashflow Projection wo ML").Method
+
+            Set WS = ThisWorkbook.Worksheets(sheetName)
+            
+            'Sheet Diskonto
+            Set wsDisc = ThisWorkbook.Worksheets("Diskonto")
+            
+            wsDisc.Cells(11, 1).Value = "Term"
+            wsDisc.Cells(11, 2).Value = "Yield"
+            
+            nDisc = projectResQ.DiscountingYieldCurves.Item(c_Projects).MaximumMonths
+            
+            For i = 0 To nDisc
+                
+                wsDisc.Cells(12 + i, 1).Value = i
+                wsDisc.Cells(12 + i, 2).Value = projectResQ.DiscountingYieldCurves.Item(c_Projects).MonthlyYield(i)
+                
+            Next i
+            
+            'Selection Method
+            Set SelectedUltimate = reservingClassResQ.Vectors("Selected Claim Amounts Ultimate").Method
+
+            For i = 1 To SelectedUltimate.OriginCount
+
+                If DFMIncurred.CumulativePattern(i) > 0.9 Then
+
+                    SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 0
+                    SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 1
+                    SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Expected Loss Reserve")), SelectedUltimate.OriginCount + 1 - i) = 0
+                    SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Paid B-F")), SelectedUltimate.OriginCount + 1 - i) = 0
+                    SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Incurred B-F")), SelectedUltimate.OriginCount + 1 - i) = 0
+
+                Else
+                    If rsSheets.Fields("Sheet Name").Value = "Health-All_" Then
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Expected Loss Reserve")), SelectedUltimate.OriginCount + 1 - i) = 1
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Paid B-F")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Incurred B-F")), SelectedUltimate.OriginCount + 1 - i) = 0
+                    Else
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Expected Loss Reserve")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Paid B-F")), SelectedUltimate.OriginCount + 1 - i) = 0
+                        SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Incurred B-F")), SelectedUltimate.OriginCount + 1 - i) = 1
+                    End If
+
+                End If
+
+            Next i
+            
+            SelectedUltimate.Save
+            
+            isAuto = False
+            If rsType.Fields("Name").Value = "Gross" Or rsType.Fields("Name").Value = "Net" Then
+                If Left(sheetName, 4) = "Auto" Then
+                    isAuto = True
+    
+                    If Left(resQPath, 6) = "Gross\" Then
+                        Set wsAuto = ThisWorkbook.Worksheets("Auto_Gross")
+                    Else
+                        Set wsAuto = ThisWorkbook.Worksheets("Auto_Net")
+                    End If
+                End If
+            End If
+            iUserEntryPaid = 0
+            iUserEntryInc = 0
+
+            'Initialization
+            For i = 1 To 24
+                For j = 1 To 24 - i
+                    WS.Cells(123 + i, 2 + j).FormatConditions.Delete
+                    WS.Cells(123 + i, 2 + j).Interior.Color = xlNone
+                    WS.Cells(123 + i, 2 + j).Font.Color = xlThemeColorLight1
+                    WS.Cells(230 + i, 2 + j).FormatConditions.Delete
+                    WS.Cells(230 + i, 2 + j).Interior.Color = xlNone
+                    WS.Cells(230 + i, 2 + j).Font.Color = xlThemeColorLight1
+                Next j
+            Next i
+            
+            'Sheet Diskonto
+            Set wsDisc = ThisWorkbook.Worksheets("Diskonto")
+            
+            wsDisc.Cells(11, 1).Value = "Term"
+            wsDisc.Cells(11, 2).Value = "Yield"
+            
+            nDisc = projectResQ.DiscountingYieldCurves.Item(c_Projects).MaximumMonths
+            
+            For i = 0 To nDisc
+                
+                wsDisc.Cells(12 + i, 1).Value = i
+                wsDisc.Cells(12 + i, 2).Value = projectResQ.DiscountingYieldCurves.Item(c_Projects).MonthlyYield(i)
+                
+            Next i
+            
+            'Premium Liabilities Discount
+            If YieldCurve = " (YC)" Then
+                If isAuto = False Then
+                    WS.Cells(399, 1).Value = "Duration Yield"
+                    WS.Cells(407, 1).Value = "Duration Yield"
+                    For i = 1 To 23
+                        WS.Cells(399, 2 + i).FormulaR1C1 = _
+                            "=(VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                            "(VLOOKUP(ROUNDUP(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                            "VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                            "(ROUNDUP(R394C" & (2 + i) & " * 12,0) - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)) * " & _
+                            "(R394C" & (2 + i) & " * 12 - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)))"
+                        WS.Cells(399, 2 + i).NumberFormat = "0.00%"
+                        WS.Cells(397, 2 + i).FormulaR1C1 = "=R396C" & (2 + i) & " * (1+ R399C" & (2 + i) & ")^-(R394C" & (2 + i) & ")"
+
+                        WS.Cells(407, 2 + i).FormulaR1C1 = _
+                            "=(VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                            "(VLOOKUP(ROUNDUP(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                            "VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                            "(ROUNDUP(R402C" & (2 + i) & " * 12,0) - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)) * " & _
+                            "(R402C" & (2 + i) & " * 12 - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)))"
+                        WS.Cells(407, 2 + i).NumberFormat = "0.00%"
+                        WS.Cells(405, 2 + i).FormulaR1C1 = "=R404C" & (2 + i) & " * (1+ R407C" & (2 + i) & ")^-(R402C" & (2 + i) & ")"
+                    Next i
+                Else
+                    wsAuto.Cells(399, 1).Value = "Duration Yield"
+                    wsAuto.Cells(407, 1).Value = "Duration Yield"
+                    For i = 1 To 23
+                        wsAuto.Cells(399, 2 + i).FormulaR1C1 = _
+                            "=(VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                            "(VLOOKUP(ROUNDUP(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                            "VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                            "(ROUNDUP(R394C" & (2 + i) & " * 12,0) - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)) * " & _
+                            "(R394C" & (2 + i) & " * 12 - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)))"
+                        wsAuto.Cells(399, 2 + i).NumberFormat = "0.00%"
+                        wsAuto.Cells(397, 2 + i).FormulaR1C1 = "=R396C" & (2 + i) & " * (1+ R399C" & (2 + i) & ")^-(R394C" & (2 + i) & ")"
+                        
+                        wsAuto.Cells(407, 2 + i).FormulaR1C1 = _
+                            "=(VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                            "(VLOOKUP(ROUNDUP(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                            "VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                            "(ROUNDUP(R402C" & (2 + i) & " * 12,0) - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)) * " & _
+                            "(R402C" & (2 + i) & " * 12 - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)))"
+                        wsAuto.Cells(407, 2 + i).NumberFormat = "0.00%"
+                        wsAuto.Cells(405, 2 + i).FormulaR1C1 = "=R404C" & (2 + i) & " * (1+ R407C" & (2 + i) & ")^-(R402C" & (2 + i) & ")"
+                    
+                    Next i
+                End If
+                
+            ElseIf YieldCurve = "" Then
+                If isAuto = False Then
+                    WS.Cells(399, 1).ClearContents
+                    WS.Cells(407, 1).ClearContents
+                    For i = 1 To 23
+                        WS.Cells(399, 2 + i).ClearContents
+                        WS.Cells(397, 2 + i).FormulaR1C1 = "=R396C" & (2 + i) & " * (1+ 'Discounting pattern'!DiscRateStat)^-(R394C" & (2 + i) & ")"
+                        
+                        WS.Cells(407, 2 + i).ClearContents
+                        WS.Cells(405, 2 + i).FormulaR1C1 = "=R404C" & (2 + i) & " * (1+ 'Discounting pattern'!DiscRateStat)^-(R402C" & (2 + i) & ")"
+                    Next i
+                Else
+                
+                    wsAuto.Cells(399, 1).ClearContents
+                    wsAuto.Cells(407, 1).ClearContents
+                    For i = 1 To 23
+                        wsAuto.Cells(399, 2 + i).ClearContents
+                        wsAuto.Cells(397, 2 + i).FormulaR1C1 = "=R396C" & (2 + i) & " * (1+ 'Discounting pattern'!DiscRateStat)^-(R394C" & (2 + i) & ")"
+                        
+                        wsAuto.Cells(407, 2 + i).ClearContents
+                        wsAuto.Cells(405, 2 + i).FormulaR1C1 = "=R404C" & (2 + i) & " * (1+ 'Discounting pattern'!DiscRateStat)^-(R402C" & (2 + i) & ")"
+                    Next i
+                    
+                End If
+            End If
+            
+
+            For i = 1 To 24
+            
+
+                'Valuation Methods
+                'Paid Chain Ladder
+                WS.Cells(82 - i, 2).Value = reservingClassResQ.Vectors("DFM Paid Claims Ultimate").ValuesByIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate").Count + 1 - i)
+
+                'Incurred Chain Ladder
+                WS.Cells(82 - i, 3).Value = reservingClassResQ.Vectors("DFM Incurred Claims Ultimate").ValuesByIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate").Count + 1 - i)
+
+                'ELR
+                WS.Cells(82 - i, 4).Value = reservingClassResQ.Vectors("Expected Loss Reserve").ValuesByIndex(reservingClassResQ.Vectors("Expected Loss Reserve").Count + 1 - i)
+
+                'Paid B-F
+                WS.Cells(82 - i, 5).Value = reservingClassResQ.Vectors("Paid B-F").ValuesByIndex(reservingClassResQ.Vectors("Paid B-F").Count + 1 - i)
+
+                'Incurred B-F
+                WS.Cells(82 - i, 6).Value = reservingClassResQ.Vectors("Incurred B-F").ValuesByIndex(reservingClassResQ.Vectors("Incurred B-F").Count + 1 - i)
+
+                'IELR
+                WS.Cells(82 - i, 12).Value = reservingClassResQ.Vectors("IELR").ValuesByIndex(reservingClassResQ.Vectors("IELR").Count + 1 - i)
+
+                'Paid Chain Ladder Factors
+                WS.Cells(82 - i, 10).Value = DFMPaid.CumulativePattern(i)
+
+                'Incurred Chain Ladder Factors
+                WS.Cells(82 - i, 11).Value = DFMIncurred.CumulativePattern(i)
+
+                'PCD Selection
+                WS.Cells(82 - i, 15).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i)
+
+                'ICD Selection
+                WS.Cells(82 - i, 16).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i)
+
+                'ELR Selection
+                WS.Cells(82 - i, 17).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Expected Loss Reserve")), SelectedUltimate.OriginCount + 1 - i)
+
+                'PBF Selection
+                WS.Cells(82 - i, 18).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Paid B-F")), SelectedUltimate.OriginCount + 1 - i)
+
+                'IBF Selection
+                WS.Cells(82 - i, 19).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Incurred B-F")), SelectedUltimate.OriginCount + 1 - i)
+
+                For j = 2 To 25
+                    'Cumulative Paid Amounts & Cumulative Incurred Amounts
+                    If j - i <= 1 Then
+                        WS.Cells(118 - i, j).Value = reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(reservingClassResQ.Triangles("Paid Claims").OriginCount + 1 - i, j - 1)
+                        WS.Cells(225 - i, j).Value = reservingClassResQ.Triangles("Incurred Claims").ValuesByIndex(reservingClassResQ.Triangles("Incurred Claims").OriginCount + 1 - i, j - 1)
+                    End If
+
+                    'Claim payments & Claims Incurred
+                    If j - i = 1 Then
+                        WS.Cells(39 - i, 3).Value = reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(reservingClassResQ.Triangles("Paid Claims").OriginCount + 1 - i, j - 1)
+                        WS.Cells(39 - i, 5).Value = reservingClassResQ.Triangles("Incurred Claims").ValuesByIndex(reservingClassResQ.Triangles("Incurred Claims").OriginCount + 1 - i, j - 1)
+                    End If
+                Next j
+
+'''                'Prior claims
+'''                SumPriorPaid = 0
+'''                For j = 1 To reservingClassResQ.Triangles("Paid Claims").OriginCount - 24
+'''                    SumPriorPaid = SumPriorPaid + reservingClassResQ.Triangles("Paid Claims").LeadingDiagonalByIndex(j) _
+'''                                        - reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(j, reservingClassResQ.Triangles("Paid Claims").DevelopmentCountByIndex(j) - 1)
+'''                Next j
+'''                ws.Cells(93, 26).Value = SumPriorPaid
+'''                ws.Cells(14, 3).Value = SumPriorPaid
+'''
+'''                SumPriorOS = 0
+'''                For j = 1 To reservingClassResQ.Triangles("Outstanding Claims").OriginCount - 24
+'''                    SumPriorOS = SumPriorOS + reservingClassResQ.Triangles("Outstanding Claims").LeadingDiagonalByIndex(j)
+'''                Next j
+'''                ws.Cells(200, 26).Value = SumPriorOS + SumPriorPaid
+'''                ws.Cells(14, 5).Value = SumPriorPaid + SumPriorOS
+'''                ws.Cells(14, 4).Value = SumPriorOS
+
+                'Earned Premiums
+                WS.Cells(39 - i, 2).Value = reservingClassResQ.Vectors("Ultimate Premiums").ValuesByIndex(reservingClassResQ.Vectors("Ultimate Premiums").Count + 1 - i)
+
+                'Case Estimates
+                WS.Cells(39 - i, 4).Value = reservingClassResQ.Vectors("Case Estimates").ValuesByIndex(reservingClassResQ.Vectors("Case Estimates").Count + 1 - i)
+
+                'Paid Claim Ratio
+                WS.Cells(39 - i, 6).Value = reservingClassResQ.Vectors("Paid Claim Ratio").ValuesByIndex(reservingClassResQ.Vectors("Paid Claim Ratio").Count + 1 - i)
+
+                'Incurred Claim Ratio
+                WS.Cells(39 - i, 7).Value = reservingClassResQ.Vectors("Incurred Claim Ratio").ValuesByIndex(reservingClassResQ.Vectors("Incurred Claim Ratio").Count + 1 - i)
+
+                'Estimated Ultimate Claims
+                If MajorLoss Then
+                    WS.Cells(39 - i, 8).Value = reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).Count + 1 - i)
+                Else
+                    WS.Cells(39 - i, 8).Value = SelectedUltimate.Ultimates(SelectedUltimate.OriginCount + 1 - i, 3)
+                End If
+
+                'Estimated Unpaid Claims
+                WS.Cells(39 - i, 9).Value = reservingClassResQ.Vectors("Estimated Unpaid Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated Unpaid Claims" & Sensitivity).Count + 1 - i)
+
+                'Estimated IBNR Claims
+                WS.Cells(39 - i, 10).Value = reservingClassResQ.Vectors("Estimated IBNR Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated IBNR Claims" & Sensitivity).Count + 1 - i)
+                
+                'Estimated Ultimate Loss Ratio
+                WS.Cells(39 - i, 11).Value = reservingClassResQ.Vectors("Estimated Ultimate Loss Ratio" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated Ultimate Loss Ratio" & Sensitivity).Count + 1 - i)
+
+                'Development Ratios for Paid Chain Ladder
+                If i < 24 Then
+                    For j = 1 To DFMPaid.DevelopmentCount(DFMPaid.OriginCount + 1 - i)
+                        'value
+                        WS.Cells(147 - i, j + 2).Value = DFMPaid.Ratios(DFMPaid.OriginCount - i, j)
+
+                        'exclusion
+                        WS.Cells(147 - i, j + 2).Interior.Color = xlNone
+                        If DFMPaid.ExcludedRatios(DFMIncurred.OriginCount - i, j) = reExcluded Then
+                            WS.Cells(147 - i, j + 2).Interior.Color = RGB(255, 0, 0)
+                            WS.Cells(147 - i, j + 2).Font.Color = RGB(255, 255, 255)
+                        End If
+                    Next j
+                End If
+
+                'Vol Wtd Last 2
+                WS.Cells(151, i + 2).Value = DFMPaid.AverageRatioValues(i, 1)
+                WS.Cells(151, i + 2).Interior.Color = xlNone
+                WS.Cells(151, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 4
+                WS.Cells(152, i + 2).Value = DFMPaid.AverageRatioValues(i, 2)
+                WS.Cells(152, i + 2).Interior.Color = xlNone
+                WS.Cells(152, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 8
+                WS.Cells(153, i + 2).Value = DFMPaid.AverageRatioValues(i, 3)
+                WS.Cells(153, i + 2).Interior.Color = xlNone
+                WS.Cells(153, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 12
+                WS.Cells(154, i + 2).Value = DFMPaid.AverageRatioValues(i, 4)
+                WS.Cells(154, i + 2).Interior.Color = xlNone
+                WS.Cells(154, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd All
+                WS.Cells(155, i + 2).Value = DFMPaid.AverageRatioValues(i, 5)
+                WS.Cells(155, i + 2).Interior.Color = xlNone
+                WS.Cells(155, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Selected Paid Gross/Net
+                WS.Cells(156, i + 2).Value = DFMPaid.AverageRatioValues(i, 6)
+                WS.Cells(156, i + 2).Interior.Color = xlNone
+                WS.Cells(156, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Prior
+                WS.Cells(157, i + 2).Value = DFMPaid.AverageRatioValues(i, 7)
+                WS.Cells(157, i + 2).Interior.Color = xlNone
+                WS.Cells(157, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Selected LDF
+                
+                If Left(resQPath, 3) = "Net" Then
+                    If DFMPaid.SelectedRatioValues(i) < 1 Then
+                        Dim YesNo As Integer
+                        YesNo = MsgBox("Selected ratio paid < 1 for LoB " & WS.Name & " for ratios " & i & ", do you want to continue?", vbQuestion + vbYesNo + vbDefaultButton2, "Ratio < 1")
+                        If YesNo = vbNo Then
+                            Exit Sub
+                        End If
+                    End If
+                    If DFMPaid.AverageRatioValues(i, 3) > 1 And DFMPaid.SelectedRatioValues(i) <> DFMPaid.AverageRatioValues(i, 3) And i < 17 Then
+                        Dim YesNo1 As Integer
+                        YesNo1 = MsgBox("Volume weighted 8 is more than 1 but not chosen for LoB " & WS.Name & " for ratios " & i & ", do you want to continue?", vbQuestion + vbYesNo + vbDefaultButton2, "Ratio < 1")
+                        If YesNo1 = vbNo Then
+                            Exit Sub
+                        End If
+                    End If
+                    If i >= 17 And i < 24 Then
+                        If DFMPaid.AverageRatioValues(i, i - 8) > 1 And DFMPaid.SelectedRatioValues(i) <> DFMPaid.AverageRatioValues(i, i - 8) Then
+                            Dim YesNo2 As Integer
+                            YesNo2 = MsgBox("Volume weighted 8 is more than 1 but not chosen for LoB " & WS.Name & " for ratios " & i & ", do you want to continue?", vbQuestion + vbYesNo + vbDefaultButton2, "Ratio < 1")
+                            If YesNo2 = vbNo Then
+                                Exit Sub
+                            End If
+                        End If
+                    End If
+                End If
+                
+                'Select Paid (Not Completed)
+'                Select Case rsType.Fields("Name").Value
+'                Case "Gross Attritional Losses", "Gross Large Losses", "Non XL RI Attritional Losses", "Non XL RI Large Losses", "XL RI"
+'
+'                End Select
+                
+                WS.Cells(159, i + 2).Value = DFMPaid.SelectedRatioValues(i)
+                WS.Cells(159, i + 2).ClearNotes
+                SR = DFMPaid.SelectedRatios(i)
+                'Selected ratio formatting
+                If SR < 8 Then
+                    WS.Cells(150 + SR, i + 2).Font.Color = RGB(255, 255, 255)
+                    WS.Cells(150 + SR, i + 2).Interior.Color = RGB(0, 128, 0)
+                Else
+                    iUserEntryPaid = iUserEntryPaid + 1
+                    WS.Cells(159, i + 2).NoteText AddComm(DFMPaid.CellNotes, iUserEntryPaid, i)
+                End If
+                
+                'Selected Cumulative
+                WS.Cells(160, i + 2).Value = DFMPaid.CumulativeRatioValues(i)
+
+                '% Developed
+                WS.Cells(161, i + 2).Value = DFMPaid.CumulativePattern(i)
+
+                'Projected paid amount
+                For j = 2 To 25
+                    If j - i < 2 Then
+                        WS.Cells(192 - i, j).Value = DFMPaid.TriangleValues(DFMPaid.OriginCount + 1 - i, j - 1)
+                    Else
+                        WS.Cells(192 - i, j).Value = DFMPaid.PredictedValues(DFMPaid.OriginCount + 1 - i, j - 1)
+                    End If
+                Next j
+                
+                'Sum Auto Paid
+'                If isAuto Then
+'                    For j = 2 To 25
+'                        wsAuto.Cells(192 - i, j).Value = wsAuto.Cells(192 - i, j).Value + ws.Cells(192 - i, j)
+'                        'PCL Auto
+'                        If j = 25 Then
+'                            wsAuto.Cells(82 - i, j).Value = wsAuto.Cells(192 - i, j)
+'                        End If
+'                    Next j
+'                End If
+
+                'Development Ratios for Incurred Chain Ladder
+                If i < 24 Then
+                    For j = 1 To DFMIncurred.DevelopmentCount(DFMIncurred.OriginCount + 1 - i)
+                        'value
+                        WS.Cells(254 - i, j + 2).Value = DFMIncurred.Ratios(DFMIncurred.OriginCount - i, j)
+
+                        'exclusion
+                        WS.Cells(254 - i, j + 2).Interior.Color = xlNone
+                        If DFMIncurred.ExcludedRatios(DFMIncurred.OriginCount - i, j) = reExcluded Then
+                            WS.Cells(254 - i, j + 2).Interior.Color = RGB(255, 0, 0)
+                            WS.Cells(254 - i, j + 2).Font.Color = RGB(255, 255, 255)
+                        End If
+                    Next j
+                End If
+
+                'Vol Wtd Last 2
+                WS.Cells(258, i + 2).Value = DFMIncurred.AverageRatioValues(i, 1)
+                WS.Cells(258, i + 2).Interior.Color = xlNone
+                WS.Cells(258, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 4
+                WS.Cells(259, i + 2).Value = DFMIncurred.AverageRatioValues(i, 2)
+                WS.Cells(259, i + 2).Interior.Color = xlNone
+                WS.Cells(259, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 8
+                WS.Cells(260, i + 2).Value = DFMIncurred.AverageRatioValues(i, 3)
+                WS.Cells(260, i + 2).Interior.Color = xlNone
+                WS.Cells(260, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd Last 12
+                WS.Cells(261, i + 2).Value = DFMIncurred.AverageRatioValues(i, 4)
+                WS.Cells(261, i + 2).Interior.Color = xlNone
+                WS.Cells(261, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Vol Wtd All
+                WS.Cells(262, i + 2).Value = DFMIncurred.AverageRatioValues(i, 5)
+                WS.Cells(262, i + 2).Interior.Color = xlNone
+                WS.Cells(262, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Selected Incurred Gross/Net
+                WS.Cells(263, i + 2).Value = DFMIncurred.AverageRatioValues(i, 6)
+                WS.Cells(263, i + 2).Interior.Color = xlNone
+                WS.Cells(263, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Prior
+                WS.Cells(264, i + 2).Value = DFMIncurred.AverageRatioValues(i, 7)
+                WS.Cells(264, i + 2).Interior.Color = xlNone
+                WS.Cells(264, i + 2).Font.Color = RGB(0, 0, 0)
+                
+                'Selected LDF
+                If DFMIncurred.SelectedRatioValues(i) < 1 Then
+                    Dim YesNoI As Integer
+                    YesNoI = MsgBox("Selected ratio incurred < 1 for LoB " & WS.Name & " for ratios " & i & ", do you want to continue?", vbQuestion + vbYesNo + vbDefaultButton2, "Ratio < 1")
+                    If YesNoI = vbNo Then
+                        Exit Sub
+                    End If
+                End If
+                WS.Cells(266, i + 2).Value = DFMIncurred.SelectedRatioValues(i)
+                WS.Cells(266, i + 2).ClearNotes
+                'Selected ratio formatting
+                SR = DFMIncurred.SelectedRatios(i)
+                If SR < 8 Then
+                    WS.Cells(257 + SR, i + 2).Font.Color = RGB(255, 255, 255)
+                    WS.Cells(257 + SR, i + 2).Interior.Color = RGB(0, 128, 0)
+                Else
+                    iUserEntryInc = iUserEntryInc + 1
+                    WS.Cells(266, i + 2).NoteText AddComm(DFMIncurred.CellNotes, iUserEntryInc, i)
+                End If
+                
+                'Selected Cumulative
+                WS.Cells(267, i + 2).Value = DFMIncurred.CumulativeRatioValues(i)
+
+                '% Developed
+                WS.Cells(268, i + 2).Value = DFMIncurred.CumulativePattern(i)
+
+                'Projected Incurred Amounts
+                For j = 2 To 25
+                    If j - i < 2 Then
+                        WS.Cells(299 - i, j).Value = DFMIncurred.TriangleValues(DFMIncurred.OriginCount + 1 - i, j - 1)
+                    Else
+                        WS.Cells(299 - i, j).Value = DFMIncurred.PredictedValues(DFMIncurred.OriginCount + 1 - i, j - 1)
+                    End If
+                Next j
+
+                'Sum Auto Incurred
+'                If isAuto Then
+'                    For j = 2 To 25
+'                        wsAuto.Cells(299 - i, j).Value = wsAuto.Cells(299 - i, j).Value + ws.Cells(299 - i, j)
+'                        'ICL Auto
+'                        If j = 25 Then
+'                            wsAuto.Cells(82 - i, j).Value = wsAuto.Cells(299 - i, j)
+'                        End If
+'                    Next j
+'                End If
+
+                'Initial Cashflow Projection
+                If MajorLoss Then
+                    For j = 3 To 25
+                        WS.Cells(328 - i, j).Value = CashFlowML.UndiscountedCashflows(CashFlow.OriginCount + 1 - i, j - 2)
+                    Next j
+                Else
+                    For j = 3 To 25
+                        WS.Cells(328 - i, j).Value = CashFlow.UndiscountedCashflows(CashFlow.OriginCount + 1 - i, j - 2)
+                    Next j
+                End If
+                
+                'Sum Auto Initial Cashflow
+'                If isAuto Then
+'                    For j = 3 To 25
+'                        wsAuto.Cells(328 - i, j).Value = wsAuto.Cells(328 - i, j).Value + ws.Cells(328 - i, j)
+'                    Next j
+'                End If
+                
+'''                If Not isAuto Then
+'''                    ws.Cells(304, 3).Value = ws.Cells(304, 3).Value + SumPriorOS
+'''                Else
+'''                    wsAuto.Cells(304, 3).Value = wsAuto.Cells(304, 3).Value + SumPriorOS
+'''                End If
+
+                'Discounted Cashflow Projection
+                If MajorLoss Then
+                    For j = 3 To 25
+                        WS.Cells(390 - i, j).Value = CashFlowML.DiscountedCashflows(CashFlowML.OriginCount + 1 - i, j - 2)
+                    Next j
+                Else
+                    For j = 3 To 25
+                        WS.Cells(390 - i, j).Value = CashFlow.DiscountedCashflows(CashFlow.OriginCount + 1 - i, j - 2)
+                    Next j
+                End If
+'''                ws.Cells(366, 3).Value = ws.Cells(304, 3) / (1 + ws.Cells(392, 2)) ^ (0.5)
+
+                'Sum Auto Discounted Cashflow Projection
+'                If isAuto Then
+'                    For j = 3 To 25
+'                        wsAuto.Cells(390 - i, j).Value = wsAuto.Cells(390 - i, j).Value + ws.Cells(390 - i, j)
+'                    Next j
+'                End If
+
+                'Occurrences
+                For j = 2 To 25
+                    If j - i < 2 Then
+                        WS.Cells(360 - i, j).Value = reservingClassResQ.Triangles("Reported Claim Counts").ValuesByIndex(reservingClassResQ.Triangles("Reported Claim Counts").OriginCount + 1 - i, j - 1)
+                    End If
+                Next j
+                
+                If rsType.Fields("Name").Value = "Gross" Or rsType.Fields("Name").Value = "Net" Then
+                
+                'AvE
+                    If rsSheets.Fields(sheetName).Value <> "Various-Ecommerce_Net" _
+                    And rsSheets.Fields(sheetName).Value <> "Various-Ecommerce_Grs" Then
+                        If Right(sheetName, 3) = "Grs" Then
+                            WSAvE = "AvE_Gross"
+                        Else
+                            WSAvE = "AvE_Net"
+                        End If
+    
+                        'Quarter
+                        If i <= 19 + QQ Then
+                            If i <= 20 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 3, 1).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 3, 11).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value + i - 24, 1).Value = YY & " Q" & i Mod 4
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value + i - 24, 11).Value = YY & " Q" & i Mod 4
+                            End If
+    
+                            AvEValueTemp = SelectedUltimate.ActualMovements(SelectedUltimate.OriginCount - i)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 2).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 2).Value = AvEValueTemp
+                            End If
+                            AvEValueTemp = SelectedUltimate.ExpectedMovements(SelectedUltimate.OriginCount - i)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 3).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 3).Value = AvEValueTemp
+                            End If
+                            AvEValueTemp = SelectedUltimate.ActualMinusExpected(SelectedUltimate.OriginCount - i)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 4).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 4).Value = AvEValueTemp
+                            End If
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 12).Value = SelectedUltimate.PreviousPattern.ValuesByIndex(i)
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 25).Value = SelectedUltimate.PreviousLatestValues(SelectedUltimate.OriginCount - i)
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 26).Value = SelectedUltimate.PreviousUltimateValues(SelectedUltimate.OriginCount - i)
+    
+                            'Sum AvE Auto
+                            If isAuto Then
+                                If i <= 20 Then
+                                    Worksheets(WSAvE).Cells(69 - i - 3, 1).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                                    Worksheets(WSAvE).Cells(69 - i - 3, 11).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                                Else
+                                    Worksheets(WSAvE).Cells(69 + i - 24, 1).Value = YY & " Q" & i Mod 4
+                                    Worksheets(WSAvE).Cells(69 + i - 24, 11).Value = YY & " Q" & i Mod 4
+                                End If
+    
+                                AvEValueTemp = Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 2).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 2).Value
+                                If Abs(AvEValueTemp) < 1 Then
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 2).Value = 0
+                                Else
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 2).Value = AvEValueTemp
+                                End If
+                                AvEValueTemp = Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 3).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 3).Value
+                                If Abs(AvEValueTemp) < 1 Then
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 3).Value = 0
+                                Else
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 3).Value = AvEValueTemp
+                                End If
+                                AvEValueTemp = Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 4).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 4).Value
+                                If Abs(AvEValueTemp) < 1 Then
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 4).Value = 0
+                                Else
+                                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 4).Value = AvEValueTemp
+                                End If
+    
+                                Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 25).Value = Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 25).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 25).Value
+                                Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 26).Value = Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 26).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvE").Value - i - 4 + QQ, 26).Value
+                            End If
+                        End If
+    
+                        'Yearly
+                        Set SelectedUltimateYE = reservingClassResQ.Vectors("Selected Claim Amounts Ultimate (YE)").Method
+    
+                        If i <= 20 Then
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 1).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 11).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                            AvEValueTemp = SelectedUltimateYE.ActualMovements(SelectedUltimate.OriginCount - i - QQ + 1)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 2).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 2).Value = AvEValueTemp
+                            End If
+                            AvEValueTemp = SelectedUltimateYE.ExpectedMovements(SelectedUltimate.OriginCount - i - QQ + 1)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 3).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 3).Value = AvEValueTemp
+                            End If
+                            AvEValueTemp = SelectedUltimateYE.ActualMinusExpected(SelectedUltimate.OriginCount - i - QQ + 1)
+                            If Abs(AvEValueTemp) < 1 Then
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 4).Value = 0
+                            Else
+                                Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 4).Value = AvEValueTemp
+                            End If
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 12).Value = SelectedUltimateYE.PreviousPattern.ValuesByIndex(i)
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 25).Value = SelectedUltimateYE.PreviousLatestValues(SelectedUltimate.OriginCount - i - QQ + 1)
+                            Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 26).Value = SelectedUltimateYE.PreviousUltimateValues(SelectedUltimate.OriginCount - i - QQ + 1)
+    
+                            'Sum AvE Auto
+                            If isAuto Then
+                                Worksheets(WSAvE).Cells(35 - i, 1).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                                Worksheets(WSAvE).Cells(35 - i, 11).Value = YY - WorksheetFunction.Floor((i - 1) / 4, 1) - 1 & " Q" & 4 - (i - 1) Mod 4
+                                Worksheets(WSAvE).Cells(35 - i, 2).Value = Worksheets(WSAvE).Cells(35 - i, 2).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 2).Value
+                                Worksheets(WSAvE).Cells(35 - i, 3).Value = Worksheets(WSAvE).Cells(35 - i, 3).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 3).Value
+                                Worksheets(WSAvE).Cells(35 - i, 4).Value = Worksheets(WSAvE).Cells(35 - i, 4).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 4).Value
+                                Worksheets(WSAvE).Cells(35 - i, 25).Value = Worksheets(WSAvE).Cells(35 - i, 25).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 25).Value
+                                Worksheets(WSAvE).Cells(35 - i, 26).Value = Worksheets(WSAvE).Cells(35 - i, 26).Value + Worksheets(WSAvE).Cells(rsSheets.Fields("AvEYE").Value - i, 26).Value
+                            End If
+                        End If
+    
+                    End If
+                
+                End If
+
+            Next i
+            
+            'Prior claims
+            SumPriorPaid = 0
+            For j = 1 To reservingClassResQ.Triangles("Paid Claims").OriginCount - 24
+                SumPriorPaid = SumPriorPaid + reservingClassResQ.Triangles("Paid Claims").LeadingDiagonalByIndex(j) _
+                                    - reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(j, reservingClassResQ.Triangles("Paid Claims").DevelopmentCountByIndex(j) - 1)
+            Next j
+            WS.Cells(93, 26).Value = SumPriorPaid
+            WS.Cells(14, 3).Value = SumPriorPaid
+
+            SumPriorOS = 0
+            For j = 1 To reservingClassResQ.Triangles("Outstanding Claims").OriginCount - 24
+                SumPriorOS = SumPriorOS + reservingClassResQ.Triangles("Outstanding Claims").LeadingDiagonalByIndex(j)
+            Next j
+            WS.Cells(200, 26).Value = SumPriorOS + SumPriorPaid
+            WS.Cells(14, 5).Value = SumPriorPaid + SumPriorOS
+            WS.Cells(14, 4).Value = SumPriorOS
+            
+            'Add prior
+            If Not isAuto Then
+                'undiscounted
+                WS.Cells(304, 3).Value = WS.Cells(304, 3).Value + SumPriorOS
+                'discounted
+                WS.Cells(366, 3).Value = WS.Cells(304, 3) / (1 + WS.Cells(392, 2)) ^ (0.5)
+            Else
+                'undiscounted
+                wsAuto.Cells(304, 3).Value = wsAuto.Cells(304, 3).Value + SumPriorOS
+                'discounted
+                wsAuto.Cells(366, 3).Value = wsAuto.Cells(304, 3) / (1 + WS.Cells(392, 2)) ^ (0.5)
+            End If
+            
+            rsSheets.MoveNext
+        Loop
+        resQ.Disconnect
+    End If
+
+
+    rsType.MoveNext
+Loop
+End If
+
+    'For Auto_Gross and Auto_Net
+'    Set rsSheets = AddSheetsAuto
+'    rsSheets.MoveFirst
+'
+'    If Not rsSheets.EOF Then
+'        Call resQ.ConnectByName(c_, c_User, c_Pass)
+'
+'        Set projectResQ = resQ.Projects(c_Projects)
+'
+'        Do While Not rsSheets.EOF
+'            Set reservingClassResQ = projectResQ.ReservingClasses(rsSheets.Fields("Reserving Class"))
+'            Set DFMPaid = reservingClassResQ.Vectors("DFM Paid Claims Ultimate").Method
+'            Set DFMIncurred = reservingClassResQ.Vectors("DFM Incurred Claims Ultimate").Method
+'            Set SelectedUltimate = reservingClassResQ.Vectors("Selected Claim Amounts Ultimate").Method
+'            Set SelectedUltimateYE = reservingClassResQ.Vectors("Selected Claim Amounts Ultimate (YE)").Method
+'
+'            Set ws = ThisWorkbook.Worksheets(rsSheets.Fields("Sheet Name").Value)
+'
+'            'Initialization
+'            For i = 1 To 24
+'                For j = 1 To 24 - i
+'                    ws.Cells(123 + i, 2 + j).Interior.Color = xlNone
+'                    ws.Cells(123 + i, 2 + j).Font.Color = xlThemeColorLight1
+'                    ws.Cells(123 + i, 2 + j).FormatConditions.Delete
+'                    ws.Cells(230 + i, 2 + j).Interior.Color = xlNone
+'                    ws.Cells(230 + i, 2 + j).Font.Color = xlThemeColorLight1
+'                    ws.Cells(230 + i, 2 + j).FormatConditions.Delete
+'                Next j
+'            Next i
+'
+'            For i = 1 To 24
+'                'Valuation Methods
+'                'Paid Chain Ladder
+'                ws.Cells(82 - i, 2).Value = reservingClassResQ.Vectors("Paid Chain Ladder").ValuesByIndex(reservingClassResQ.Vectors("Paid Chain Ladder").Count + 1 - i)
+'
+'                'Incurred Chain Ladder
+'                ws.Cells(82 - i, 3).Value = reservingClassResQ.Vectors("Incurred Chain Ladder").ValuesByIndex(reservingClassResQ.Vectors("Incurred Chain Ladder").Count + 1 - i)
+'
+'                'ELR
+'                ws.Cells(82 - i, 4).Value = reservingClassResQ.Vectors("Expected Loss Reserve").ValuesByIndex(reservingClassResQ.Vectors("Expected Loss Reserve").Count + 1 - i)
+'
+'                'Paid B-F
+'                ws.Cells(82 - i, 5).Value = reservingClassResQ.Vectors("Paid B-F").ValuesByIndex(reservingClassResQ.Vectors("Paid B-F").Count + 1 - i)
+'
+'                'Incurred B-F
+'                ws.Cells(82 - i, 6).Value = reservingClassResQ.Vectors("Incurred B-F").ValuesByIndex(reservingClassResQ.Vectors("Incurred B-F").Count + 1 - i)
+'
+'                'IELR
+'                ws.Cells(82 - i, 12).Value = reservingClassResQ.Vectors("IELR").ValuesByIndex(reservingClassResQ.Vectors("IELR").Count + 1 - i)
+'
+'                'Paid Chain Ladder Factors
+'                ws.Cells(82 - i, 10).Value = DFMPaid.CumulativePattern(i)
+'
+'                'Incurred Chain Ladder Factors
+'                ws.Cells(82 - i, 11).Value = DFMIncurred.CumulativePattern(i)
+'
+'                'PCD Selection
+'                ws.Cells(82 - i, 15).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Paid Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i)
+'
+'                'ICD Selection
+'                ws.Cells(82 - i, 16).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("DFM Incurred Claims Ultimate")), SelectedUltimate.OriginCount + 1 - i)
+'
+'                'ELR Selection
+'                ws.Cells(82 - i, 17).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Expected Loss Reserve")), SelectedUltimate.OriginCount + 1 - i)
+'
+'                'PBF Selection
+'                ws.Cells(82 - i, 18).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Paid B-F")), SelectedUltimate.OriginCount + 1 - i)
+'
+'                'IBF Selection
+'                ws.Cells(82 - i, 19).Value = SelectedUltimate.Weights(SelectedUltimate.DatasetIndex(reservingClassResQ.Vectors("Incurred B-F")), SelectedUltimate.OriginCount + 1 - i)
+'
+'                For j = 2 To 25
+'                    'Cumulative Paid Amounts & Cumulative Incurred Amounts
+'                    If j - i <= 1 Then
+'                        ws.Cells(118 - i, j).Value = reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(reservingClassResQ.Triangles("Paid Claims").OriginCount + 1 - i, j - 1)
+'                        ws.Cells(225 - i, j).Value = reservingClassResQ.Triangles("Incurred Claims").ValuesByIndex(reservingClassResQ.Triangles("Incurred Claims").OriginCount + 1 - i, j - 1)
+'                    End If
+'
+'                    'Claim payments & Claims Incurred
+'                    If j - i = 1 Then
+'                        ws.Cells(39 - i, 3).Value = reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(reservingClassResQ.Triangles("Paid Claims").OriginCount + 1 - i, j - 1)
+'                        ws.Cells(39 - i, 5).Value = reservingClassResQ.Triangles("Incurred Claims").ValuesByIndex(reservingClassResQ.Triangles("Incurred Claims").OriginCount + 1 - i, j - 1)
+'                    End If
+'                Next j
+'
+'                'Prior claims
+'                SumPriorPaid = 0
+'                For j = 1 To reservingClassResQ.Triangles("Paid Claims").OriginCount - 24
+'                    SumPriorPaid = SumPriorPaid + reservingClassResQ.Triangles("Paid Claims").LeadingDiagonalByIndex(j) _
+'                                        - reservingClassResQ.Triangles("Paid Claims").ValuesByIndex(j, reservingClassResQ.Triangles("Paid Claims").DevelopmentCountByIndex(j) - 1)
+'                Next j
+'                ws.Cells(93, 26).Value = SumPriorPaid
+'                ws.Cells(14, 3).Value = SumPriorPaid
+'
+'                SumPriorOS = 0
+'                For j = 1 To reservingClassResQ.Triangles("Outstanding Claims").OriginCount - 24
+'                    SumPriorOS = SumPriorOS + reservingClassResQ.Triangles("Outstanding Claims").LeadingDiagonalByIndex(j)
+'                Next j
+'                ws.Cells(200, 26).Value = SumPriorOS + SumPriorPaid
+'                ws.Cells(14, 5).Value = SumPriorPaid + SumPriorOS
+'                ws.Cells(14, 4).Value = SumPriorOS
+'
+'                'Earned Premiums
+'                ws.Cells(39 - i, 2).Value = reservingClassResQ.Vectors("Ultimate Premiums").ValuesByIndex(reservingClassResQ.Vectors("Ultimate Premiums").Count + 1 - i)
+'
+'                'Case Estimates
+'                ws.Cells(39 - i, 4).Value = reservingClassResQ.Vectors("Case Estimates").ValuesByIndex(reservingClassResQ.Vectors("Case Estimates").Count + 1 - i)
+'
+'                'Paid Claim Ratio
+'                ws.Cells(39 - i, 6).Value = reservingClassResQ.Vectors("Paid Claim Ratio").ValuesByIndex(reservingClassResQ.Vectors("Paid Claim Ratio").Count + 1 - i)
+'
+'                'Incurred Claim Ratio
+'                ws.Cells(39 - i, 7).Value = reservingClassResQ.Vectors("Incurred Claim Ratio").ValuesByIndex(reservingClassResQ.Vectors("Incurred Claim Ratio").Count + 1 - i)
+'
+'                'Estimated Ultimate Claims
+'                If MajorLoss Then
+'                    ws.Cells(39 - i, 8).Value = reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).Count + 1 - i)
+'                Else
+'                    ws.Cells(39 - i, 8).Value = reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Ultimate Claims" & Sensitivity).Count + 1 - i)
+'                End If
+'
+'                'Estimated Unpaid Claims
+'                ws.Cells(39 - i, 9).Value = reservingClassResQ.Vectors("Estimated Unpaid Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated Unpaid Claims" & Sensitivity).Count + 1 - i)
+'
+'                'Estimated IBNR Claims
+'                ws.Cells(39 - i, 10).Value = reservingClassResQ.Vectors("Estimated IBNR Claims" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated IBNR Claims" & Sensitivity).Count + 1 - i)
+'
+'                'Estimated Ultimate Loss Ratio
+'                ws.Cells(39 - i, 11).Value = reservingClassResQ.Vectors("Estimated Ultimate Loss Ratio" & Sensitivity).ValuesByIndex(reservingClassResQ.Vectors("Estimated Ultimate Loss Ratio" & Sensitivity).Count + 1 - i)
+'
+'                'Development Ratios for Paid Chain Ladder
+'                If i < 24 Then
+'                    For j = 1 To DFMPaid.DevelopmentCount(DFMPaid.OriginCount + 1 - i)
+'                        'value
+'                        ws.Cells(147 - i, j + 2).Value = DFMPaid.Ratios(DFMPaid.OriginCount - i, j)
+'
+'                        'exclusion
+'                        ws.Cells(254 - i, j + 2).Interior.Color = xlNone
+'                        If DFMPaid.ExcludedRatios(DFMIncurred.OriginCount - i, j) = reExcluded Then
+'                            ws.Cells(254 - i, j + 2).Interior.Color = RGB(0, 0, 255)
+'                            ws.Cells(254 - i, j + 2).Font.Color = RGB(255, 255, 255)
+'                        End If
+'                    Next j
+'                End If
+'
+'                'Vol Wtd Last 2
+'                ws.Cells(151, i + 2).Value = DFMPaid.AverageRatioValues(i, 1)
+'                ws.Cells(151, i + 2).Interior.Color = xlNone
+'                ws.Cells(151, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 4
+'                ws.Cells(152, i + 2).Value = DFMPaid.AverageRatioValues(i, 2)
+'                ws.Cells(152, i + 2).Interior.Color = xlNone
+'                ws.Cells(152, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 8
+'                ws.Cells(153, i + 2).Value = DFMPaid.AverageRatioValues(i, 3)
+'                ws.Cells(153, i + 2).Interior.Color = xlNone
+'                ws.Cells(153, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 12
+'                ws.Cells(154, i + 2).Value = DFMPaid.AverageRatioValues(i, 4)
+'                ws.Cells(154, i + 2).Interior.Color = xlNone
+'                ws.Cells(154, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd All
+'                ws.Cells(155, i + 2).Value = DFMPaid.AverageRatioValues(i, 5)
+'                ws.Cells(155, i + 2).Interior.Color = xlNone
+'                ws.Cells(155, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Selected Paid Gross/Net
+'                ws.Cells(156, i + 2).Value = DFMPaid.AverageRatioValues(i, 6)
+'                ws.Cells(156, i + 2).Interior.Color = xlNone
+'                ws.Cells(156, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Prior
+'                ws.Cells(157, i + 2).Value = DFMPaid.AverageRatioValues(i, 7)
+'                ws.Cells(157, i + 2).Interior.Color = xlNone
+'                ws.Cells(157, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Selected LDF
+'                ws.Cells(159, i + 2).Value = DFMPaid.SelectedRatioValues(i)
+'                ws.Cells(159, i + 2).Interior.Color = xlNone
+'                SR = DFMPaid.SelectedRatios(i)
+'                'Selected ratio formatting
+'                If SR <> 8 Then
+'                    ws.Cells(150 + SR, i + 2).Font.Color = RGB(255, 255, 255)
+'                    ws.Cells(150 + SR, i + 2).Interior.Color = RGB(0, 128, 0)
+'                End If
+'
+'                'Selected Cumulative
+'                ws.Cells(160, i + 2).Value = DFMPaid.CumulativeRatioValues(i)
+'
+'                '% Developed
+'                ws.Cells(161, i + 2).Value = DFMPaid.CumulativePattern(i)
+'
+'                'Development Ratios for Incurred Chain Ladder
+'                If i < 24 Then
+'                    For j = 1 To DFMIncurred.DevelopmentCount(DFMIncurred.OriginCount + 1 - i)
+'                        'value
+'                        ws.Cells(254 - i, j + 2).Value = DFMIncurred.Ratios(DFMIncurred.OriginCount - i, j)
+'
+'                        'exclusion
+'                        ws.Cells(254 - i, j + 2).Interior.Color = xlNone
+'                        If DFMIncurred.ExcludedRatios(DFMIncurred.OriginCount - i, j) = reExcluded Then
+'                            ws.Cells(254 - i, j + 2).Interior.Color = RGB(255, 0, 0)
+'                            ws.Cells(254 - i, j + 2).Font.Color = RGB(255, 255, 255)
+'                        End If
+'                    Next j
+'                End If
+'
+'                'Vol Wtd Last 2
+'                ws.Cells(258, i ...+ 2).Value = DFMIncurred.AverageRatioValues(i, 1)
+'                ws.Cells(258, i + 2).Interior.Color = xlNone
+'                ws.Cells(258, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 4
+'                ws.Cells(259, i + 2).Value = DFMIncurred.AverageRatioValues(i, 2)
+'                ws.Cells(259, i + 2).Interior.Color = xlNone
+'                ws.Cells(259, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 8
+'                ws.Cells(260, i + 2).Value = DFMIncurred.AverageRatioValues(i, 3)
+'                ws.Cells(260, i + 2).Interior.Color = xlNone
+'                ws.Cells(260, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd Last 12
+'                ws.Cells(261, i + 2).Value = DFMIncurred.AverageRatioValues(i, 4)
+'                ws.Cells(261, i + 2).Interior.Color = xlNone
+'                ws.Cells(261, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Vol Wtd All
+'                ws.Cells(262, i + 2).Value = DFMIncurred.AverageRatioValues(i, 5)
+'                ws.Cells(262, i + 2).Interior.Color = xlNone
+'                ws.Cells(262, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Selected Incurred Gross/Net
+'                ws.Cells(263, i + 2).Value = DFMIncurred.AverageRatioValues(i, 6)
+'                ws.Cells(263, i + 2).Interior.Color = xlNone
+'                ws.Cells(263, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Prior
+'                ws.Cells(264, i + 2).Value = DFMIncurred.AverageRatioValues(i, 7)
+'                ws.Cells(264, i + 2).Interior.Color = xlNone
+'                ws.Cells(264, i + 2).Font.Color = RGB(0, 0, 0)
+'
+'                'Selected LDF
+'                ws.Cells(266, i + 2).Value = DFMIncurred.SelectedRatioValues(i)
+'                ws.Cells(266, i + 2).Interior.Color = xlNone
+'                'Selected ratio formatting
+'                SR = DFMIncurred.SelectedRatios(i)
+'                If SR <> 8 Then
+'                    ws.Cells(257 + SR, i + 2).Font.Color = RGB(255, 255, 255)
+'                    ws.Cells(257 + SR, i + 2).Interior.Color = RGB(0, 128, 0)
+'                End If
+'
+'                'Selected Cumulative
+'                ws.Cells(267, i + 2).Value = DFMIncurred.CumulativeRatioValues(i)
+'
+'                '% Developed
+'                ws.Cells(268, i + 2).Value = DFMIncurred.CumulativePattern(i)
+'
+'                'Occurrences
+'                For j = 2 To 25
+'                    If j - i < 2 Then
+'                        ws.Cells(360 - i, j).Value = reservingClassResQ.Triangles("Reported Claim Counts").ValuesByIndex(reservingClassResQ.Triangles("Reported Claim Counts").OriginCount + 1 - i, j - 1)
+'                    End If
+'                Next j
+'
+'                'Previous Incurred Pattern untuk AvE
+'                If Right(rsSheets.Fields("Sheet Name").Value, 3) = "Net" Then
+'                    WSAvE = "AvE_Net"
+'                Else
+'                    WSAvE = "AvE_Gross"
+'                End If
+'                If i <= 19 + QQ Then
+'                    Worksheets(WSAvE).Cells(69 - i - 4 + QQ, 12).Value = SelectedUltimate.PreviousPattern.ValuesByIndex(i)
+'                End If
+'                If i <= 20 Then
+'                    Worksheets(WSAvE).Cells(35 - i, 12).Value = SelectedUltimateYE.PreviousPattern.ValuesByIndex(i)
+'                End If
+'
+'            Next i
+'
+'            rsSheets.MoveNext
+'        Loop
+'        resQ.Disconnect
+'    End If
+    'For manual adjustment DFM
+    If AdjustmentDFM Then
+        PostResultsDFMAdjustedRCH
+    End If
+    
+    'Delete If Cause Error for Yield Curve
+'    If YieldCurve = " (YC)" Then
+'        YCTrue
+'    ElseIf YieldCurve = "" Then
+'        YCFalse
+'    End If
+
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+
+    SwitchOff (False)
+
+End Sub
+Private Sub FormulaFormatAvE(Q As Integer)
+    Dim i As Integer
+    Dim iRow As Integer
+    Dim rsSheets As ADODB.Recordset
+    Dim rsType As ADODB.Recordset
+
+    SwitchOff (True)
+
+Set rsType = ReservingType
+rsType.MoveFirst
+
+If Not rsType.EOF Then
+
+Do While Not rsType.EOF
+If rsType.Fields("Name").Value = "Gross" Or rsType.Fields("Name").Value = "Net" Then
+    'hapus formula dan format
+    Set rsSheets = AddSheets
+    rsSheets.MoveFirst
+    
+    If Not rsSheets.EOF Then
+        Do While Not rsSheets.EOF
+            iRow = rsSheets.Fields("AvE")
+            Worksheets("AvE_Net").Range("A" & iRow - 3 & ":AZ" & iRow - 1).ClearContents
+            Worksheets("AvE_Gross").Range("A" & iRow - 3 & ":AZ" & iRow - 1).ClearContents
+            Worksheets("AvE_Net").Range("A" & iRow - 3 & ":AZ" & iRow - 1).Interior.Color = xlNone
+            Worksheets("AvE_Gross").Range("A" & iRow - 3 & ":AZ" & iRow - 1).Interior.Color = xlNone
+            rsSheets.MoveNext
+        Loop
+    End If
+    
+    Worksheets("AvE_Net").Range("A66:AZ68").ClearContents
+    Worksheets("AvE_Gross").Range("A66:AZ68").ClearContents
+    Worksheets("AvE_Net").Range("A66:AZ68").Interior.Color = xlNone
+    Worksheets("AvE_Gross").Range("A66:AZ68").Interior.Color = xlNone
+    
+    'tambahkan formula dan format
+    Set rsSheets = AddSheets
+    rsSheets.MoveFirst
+
+    If Not rsSheets.EOF Then
+        Do While Not rsSheets.EOF
+            iRow = rsSheets.Fields("AvE")
+            Worksheets("AvE_Net").Range("B" & iRow - 4 & ":B" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Net").Range("L" & iRow - 4 & ":L" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Net").Range("Y" & iRow - 4 & ":Y" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Net").Range("Z" & iRow - 4 & ":Z" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Gross").Range("B" & iRow - 4 & ":B" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Gross").Range("L" & iRow - 4 & ":L" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Gross").Range("Y" & iRow - 4 & ":Y" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Gross").Range("Z" & iRow - 4 & ":Z" & iRow + Q - 5).Interior.Color = RGB(197, 217, 241)
+            Worksheets("AvE_Net").Range("E" & iRow - 4 & ":E" & iRow + Q - 5).FormulaR1C1 = "=LEFT(RC[-4],4)"
+            Worksheets("AvE_Net").Range("M" & iRow - 4 & ":X" & iRow + Q - 5).FormulaR1C1 = "=R[-1]C[-1]"
+            Worksheets("AvE_Net").Range("AA" & iRow - 4 & ":AA" & iRow + Q - 5).FormulaR1C1 = "=RC[-1]-RC[-2]"
+            Worksheets("AvE_Net").Range("AC" & iRow - 4 & ":AC" & iRow + Q - 5).FormulaR1C1 = "=IF(ISERROR( RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+            Worksheets("AvE_Net").Range("AD" & iRow - 4 & ":AN" & iRow + Q - 5).FormulaR1C1 = "=IF(ISERROR(RC[11]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[11]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+            Worksheets("AvE_Net").Range("AO" & iRow - 4 & ":AZ" & iRow + Q - 5).FormulaR1C1 = "=RC26-SUM(RC29:RC[-12])-RC25"
+            Worksheets("AvE_Gross").Range("E" & iRow - 4 & ":E" & iRow + Q - 5).FormulaR1C1 = "=LEFT(RC[-4],4)"
+            Worksheets("AvE_Gross").Range("M" & iRow - 4 & ":X" & iRow + Q - 5).FormulaR1C1 = "=R[-1]C[-1]"
+            Worksheets("AvE_Gross").Range("AA" & iRow - 4 & ":AA" & iRow + Q - 5).FormulaR1C1 = "=RC[-1]-RC[-2]"
+            Worksheets("AvE_Gross").Range("AC" & iRow - 4 & ":AC" & iRow + Q - 5).FormulaR1C1 = "=IF(ISERROR( RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+            Worksheets("AvE_Gross").Range("AD" & iRow - 4 & ":AN" & iRow + Q - 5).FormulaR1C1 = "=IF(ISERROR(RC[11]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[11]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+            Worksheets("AvE_Gross").Range("AO" & iRow - 4 & ":AZ" & iRow + Q - 5).FormulaR1C1 = "=RC26-SUM(RC29:RC[-12])-RC25"
+            rsSheets.MoveNext
+        Loop
+    End If
+End If
+    rsType.MoveNext
+Loop
+End If
+
+    Worksheets("AvE_Net").Range("B" & 69 - 4 & ":B" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Net").Range("L" & 69 - 4 & ":L" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Net").Range("Y" & 69 - 4 & ":Y" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Net").Range("Z" & 69 - 4 & ":Z" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Gross").Range("B" & 69 - 4 & ":B" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Gross").Range("L" & 69 - 4 & ":L" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Gross").Range("Y" & 69 - 4 & ":Y" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Gross").Range("Z" & 69 - 4 & ":Z" & 69 + Q - 5).Interior.Color = RGB(197, 217, 241)
+    Worksheets("AvE_Net").Range("E" & 69 - 4 & ":E" & 69 + Q - 5).FormulaR1C1 = "=LEFT(RC[-4],4)"
+    Worksheets("AvE_Net").Range("M" & 69 - 4 & ":X" & 69 + Q - 5).FormulaR1C1 = "=R[-1]C[-1]"
+    Worksheets("AvE_Net").Range("AA" & 69 - 4 & ":AA" & 69 + Q - 5).FormulaR1C1 = "=RC[-1]-RC[-2]"
+    Worksheets("AvE_Net").Range("AC" & 69 - 4 & ":AC" & 69 + Q - 5).FormulaR1C1 = "=IF(ISERROR( RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+    Worksheets("AvE_Net").Range("AD" & 69 - 4 & ":AN" & 69 + Q - 5).FormulaR1C1 = "=IF(ISERROR(RC[11]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[11]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+    Worksheets("AvE_Net").Range("AO" & 69 - 4 & ":AZ" & 69 + Q - 5).FormulaR1C1 = "=RC26-SUM(RC29:RC[-12])-RC25"
+    Worksheets("AvE_Gross").Range("E" & 69 - 4 & ":E" & 69 + Q - 5).FormulaR1C1 = "=LEFT(RC[-4],4)"
+    Worksheets("AvE_Gross").Range("M" & 69 - 4 & ":X" & 69 + Q - 5).FormulaR1C1 = "=R[-1]C[-1]"
+    Worksheets("AvE_Gross").Range("AA" & 69 - 4 & ":AA" & 69 + Q - 5).FormulaR1C1 = "=RC[-1]-RC[-2]"
+    Worksheets("AvE_Gross").Range("AC" & 69 - 4 & ":AC" & 69 + Q - 5).FormulaR1C1 = "=IF(ISERROR( RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[-2]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+    Worksheets("AvE_Gross").Range("AD" & 69 - 4 & ":AN" & 69 + Q - 5).FormulaR1C1 = "=IF(ISERROR(RC[11]/(1-RC[-17])*(RC[-16]-RC[-17])),0,RC[11]/(1-RC[-17])*(RC[-16]-RC[-17]))"
+    Worksheets("AvE_Gross").Range("AO" & 69 - 4 & ":AZ" & 69 + Q - 5).FormulaR1C1 = "=RC26-SUM(RC29:RC[-12])-RC25"
+    
+    SwitchOff (False)
+End Sub
+Private Sub SetAuto0()
+    'For the following range, value = sum(Partial+Total+TP)
+    'Not directly from ResQ
+    With Worksheets("Auto_Gross")
+        .Range("B168:Y191").Value = 0
+        .Range("B275:Y298").Value = 0
+        .Range("C304:Y327").Value = 0
+        .Range("C366:Y389").Value = 0
+    End With
+    With Worksheets("Auto_Net")
+        .Range("B168:Y191").Value = 0
+        .Range("B275:Y298").Value = 0
+        .Range("C304:Y327").Value = 0
+        .Range("C366:Y389").Value = 0
+    End With
+    
+    Worksheets("AvE_Net").Range("B15:D34").Value = 0
+    Worksheets("AvE_Net").Range("B46:D68").Value = 0
+    Worksheets("AvE_Net").Range("L15:L34").Value = 0
+    Worksheets("AvE_Net").Range("Y15:Z34").Value = 0
+    Worksheets("AvE_Net").Range("L46:L68").Value = 0
+    Worksheets("AvE_Net").Range("Y46:Z68").Value = 0
+    Worksheets("AvE_Gross").Range("B15:D34").Value = 0
+    Worksheets("AvE_Gross").Range("B46:D68").Value = 0
+    Worksheets("AvE_Gross").Range("L15:L34").Value = 0
+    Worksheets("AvE_Gross").Range("Y15:Z34").Value = 0
+    Worksheets("AvE_Gross").Range("L46:L68").Value = 0
+    Worksheets("AvE_Gross").Range("Y46:Z68").Value = 0
+    
+End Sub
+Private Function AddComm(Comm As String, iOther As Integer, ind As Integer)
+    On Error GoTo ErrHand
+    Dim TempStr As String
+    Dim posS, pos1, pos2 As Integer
+    Dim i As Integer
+    
+ExitFunction:
+    posS = InStr(Comm, "Cell[" & 3 * ind)
+    If posS = 0 Then
+        AddComm = "No note found"
+    Else
+        pos1 = InStr(posS, Comm, Chr(34))
+        pos2 = InStr(pos1 + 1, Comm, Chr(34))
+        AddComm = Mid(Comm, pos1 + 1, pos2 - pos1 - 1)
+    End If
+    Exit Function
+    
+ErrHand:
+    AddComm = "Error"
+End Function
+Private Function AddSheets() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Reserving Class", adVarChar, 200
+        .Fields.Append "AvE", adInteger
+        .Fields.Append "AvEYE", adInteger
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD PartialLoss Comb_"
+        .Fields("Reserving Class").Value = "\Auto\OD\Partial Loss"
+        .Fields("AvE").Value = 861
+        .Fields("AvEYE").Value = 827
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Mcycle_"
+        .Fields("Reserving Class").Value = "\Auto\OD\Total Loss\Motorcycle"
+        .Fields("AvE").Value = 927
+        .Fields("AvEYE").Value = 893
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-OD TotLoss_Non-Mcycle_"
+        .Fields("Reserving Class").Value = "\Auto\OD\Total Loss\Non Motorcycle"
+        .Fields("AvE").Value = 993
+        .Fields("AvEYE").Value = 959
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto-TP_"
+        .Fields("Reserving Class").Value = "\Auto\TP"
+        .Fields("AvE").Value = 1059
+        .Fields("AvEYE").Value = 1025
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire-All_"
+        .Fields("Reserving Class").Value = "\Fire"
+        .Fields("AvE").Value = 201
+        .Fields("AvEYE").Value = 167
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Eng-All_"
+        .Fields("Reserving Class").Value = "\Engineering"
+        .Fields("AvE").Value = 135
+        .Fields("AvEYE").Value = 101
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce_"
+        .Fields("Reserving Class").Value = "\Marine\E-Commerce"
+        .Fields("AvE").Value = 399
+        .Fields("AvEYE").Value = 365
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other_"
+        .Fields("Reserving Class").Value = "\Marine\Non E-Commerce"
+        .Fields("AvE").Value = 333
+        .Fields("AvEYE").Value = 299
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail_"
+        .Fields("Reserving Class").Value = "\PA\Retail"
+        .Fields("AvE").Value = 465
+        .Fields("AvEYE").Value = 431
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial_"
+        .Fields("Reserving Class").Value = "\PA\Commercial"
+        .Fields("AvE").Value = 531
+        .Fields("AvEYE").Value = 497
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability-All_"
+        .Fields("Reserving Class").Value = "\Liability"
+        .Fields("AvE").Value = 267
+        .Fields("AvEYE").Value = 233
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail_"
+        .Fields("Reserving Class").Value = "\Travel\Retail"
+        .Fields("AvE").Value = 663
+        .Fields("AvEYE").Value = 629
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial_"
+        .Fields("Reserving Class").Value = "\Travel\Commercial"
+        .Fields("AvE").Value = 729
+        .Fields("AvEYE").Value = 695
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "TradeCredit-All_"
+        .Fields("Reserving Class").Value = "\Trade Credit"
+        .Fields("AvE").Value = 795
+        .Fields("AvEYE").Value = 761
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Health-All_"
+        .Fields("Reserving Class").Value = "\Health"
+        .Fields("AvE").Value = 1123
+        .Fields("AvEYE").Value = 1091
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-All_"
+        .Fields("Reserving Class").Value = "\Various\Non E-Commerce"
+        .Fields("AvE").Value = 597
+        .Fields("AvEYE").Value = 563
+        .Update
+
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-Ecommerce_"
+        .Fields("Reserving Class").Value = "\Various\Commerce"
+        .Fields("AvE").Value = 9999
+        .Fields("AvEYE").Value = 9999
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto_"
+        .Fields("Reserving Class").Value = "\Auto"
+        .Fields("AvE").Value = 69
+        .Fields("AvEYE").Value = 35
+        .Update
+        
+    End With
+    
+    Set AddSheets = rs
+End Function
+Private Function AddSheetsAuto() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Reserving Class", adVarChar, 200
+        .Fields.Append "AvE", adInteger
+        .Fields.Append "AvEYE", adInteger
+        .Open
+
+'        .AddNew
+'        .Fields("Sheet Name").Value = "Auto_Gross"
+'        .Fields("Reserving Class").Value = "Gross\Auto"
+'        .Fields("AvE").Value = 69
+'        .Fields("AvEYE").Value = 35
+'        .Update
+
+'        .AddNew
+'        .Fields("Sheet Name").Value = "Auto_Net"
+'        .Fields("Reserving Class").Value = "Net\Auto"
+'        .Fields("AvE").Value = 69
+'        .Fields("AvEYE").Value = 35
+'        .Update
+        
+    End With
+
+    Set AddSheetsAuto = rs
+End Function
+
+Private Function ReservingType() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Name", adVarChar, 200
+        .Fields.Append "Sheet Ext", adVarChar, 200
+        .Open
+
+'        .AddNew
+'        .Fields("Name").Value = "Gross"
+'        .Fields("Sheet Ext").Value = "Grs"
+'        .Update
+'
+'        .AddNew
+'        .Fields("Name").Value = "Net"
+'        .Fields("Sheet Ext").Value = "Net"
+'        .Update
+        
+'        .AddNew
+'        .Fields("Name").Value = "Gross Attritional Losses"
+'        .Fields("Sheet Ext").Value = "Gross_AL"
+'        .Update
+'
+'        .AddNew
+'        .Fields("Name").Value = "Gross Large Losses"
+'        .Fields("Sheet Ext").Value = "Gross_LL"
+'        .Update
+        
+'        .AddNew
+'        .Fields("Name").Value = "Non XL RI Attritional Losses"
+'        .Fields("Sheet Ext").Value = "NXL_RI_AL"
+'        .Update
+'
+'        .AddNew
+'        .Fields("Name").Value = "Non XL RI Large Losses"
+'        .Fields("Sheet Ext").Value = "NXL_RI_LL"
+'        .Update
+'
+        .AddNew
+        .Fields("Name").Value = "XL RI"
+        .Fields("Sheet Ext").Value = "XL_RI"
+        .Update
+        
+        .AddNew
+        .Fields("Name").Value = "Non XL RI"
+        .Fields("Sheet Ext").Value = "NXL_RI"
+        .Update
+        
+    End With
+
+    Set ReservingType = rs
+End Function
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+
+
+
+
+
+
+
+
+
+
