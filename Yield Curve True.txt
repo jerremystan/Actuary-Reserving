@@ -1,0 +1,164 @@
+
+Public Sub YCTrue()
+    
+    Dim rsSheets As ADODB.Recordset
+    Dim WB As Workbook
+    Dim WsX As Worksheet
+    Dim i As Integer
+    Dim rowName As Integer
+    Dim newName As String
+    Dim NewFile As String
+    Dim GNArr As Variant
+    Dim sheetNama As String
+
+    
+    GNArr = Array("Gross", "Net")
+    
+    Set WB = ThisWorkbook
+    countRow = 0
+    For Each GN In GNArr
+        'Populating data
+        Set rsSheets = AddSheetsGross
+        rsSheets.MoveFirst
+        
+        If Not rsSheets.EOF Then
+            Do While Not rsSheets.EOF
+                If GN = "Gross" Then
+                    If rsSheets.Fields("Sheet Name").Value = "Auto" Then
+                        sheetNama = rsSheets.Fields("Sheet Name").Value & "_Gross"
+                    Else
+                        sheetNama = rsSheets.Fields("Sheet Name").Value & "_Grs"
+                    End If
+                Else
+                    sheetNama = rsSheets.Fields("Sheet Name").Value & "_" & GN
+                End If
+                
+                Set WsX = WB.Sheets(sheetNama)
+                
+                WsX.Cells(399, 1).Value = "Duration Yield"
+                WsX.Cells(407, 1).Value = "Duration Yield"
+                
+                For i = 1 To 23
+                    
+                    WsX.Cells(399, 2 + i).FormulaR1C1 = _
+                        "=(VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                        "(VLOOKUP(ROUNDUP(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                        "VLOOKUP(ROUNDDOWN(R394C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                        "(ROUNDUP(R394C" & (2 + i) & " * 12,0) - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)) * " & _
+                        "(R394C" & (2 + i) & " * 12 - ROUNDDOWN(R394C" & (2 + i) & " * 12,0)))"
+                    WsX.Cells(399, 2 + i).NumberFormat = "0.00%"
+                    WsX.Cells(397, 2 + i).FormulaR1C1 = "=R396C" & (2 + i) & " * (1+ R399C" & (2 + i) & ")^-(R394C" & (2 + i) & ")"
+                    
+                    WsX.Cells(407, 2 + i).FormulaR1C1 = _
+                        "=(VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) +" & _
+                        "(VLOOKUP(ROUNDUP(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE) - " & _
+                        "VLOOKUP(ROUNDDOWN(R402C" & (2 + i) & " * 12,0), 'Diskonto'!R11C1:R492C2,2, FALSE)) / " & _
+                        "(ROUNDUP(R402C" & (2 + i) & " * 12,0) - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)) * " & _
+                        "(R402C" & (2 + i) & " * 12 - ROUNDDOWN(R402C" & (2 + i) & " * 12,0)))"
+                    WsX.Cells(407, 2 + i).NumberFormat = "0.00%"
+                    WsX.Cells(405, 2 + i).FormulaR1C1 = "=R404C" & (2 + i) & " * (1+ R407C" & (2 + i) & ")^-(R402C" & (2 + i) & ")"
+                    
+                
+                Next i
+                
+                rsSheets.MoveNext
+            Loop
+        End If
+        
+    Next GN
+    
+
+    WB.Close SaveChanges:=False
+    
+    MsgBox "End"
+
+End Sub
+Private Function AddSheetsGross() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Summary Row", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto"
+        .Fields("Summary Row").Value = "13"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Eng-All"
+        .Fields("Summary Row").Value = "14"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire-All"
+        .Fields("Summary Row").Value = "15"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce"
+        .Fields("Summary Row").Value = "16"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other"
+        .Fields("Summary Row").Value = "17"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability-All"
+        .Fields("Summary Row").Value = "19"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial"
+        .Fields("Summary Row").Value = "20"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail"
+        .Fields("Summary Row").Value = "21"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial"
+        .Fields("Summary Row").Value = "22"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail"
+        .Fields("Summary Row").Value = "23"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "TradeCredit-All"
+        .Fields("Summary Row").Value = "24"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-All"
+        .Fields("Summary Row").Value = "25"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Health-All"
+        .Fields("Summary Row").Value = "26"
+        .Update
+        
+'        .AddNew
+'        .Fields("Sheet Name").Value = "Various-Ecommerce"
+'        .Fields("Summary Row").Value = "27"
+'        .Update
+        
+    End With
+    
+    Set AddSheetsGross = rs
+End Function
+
+
+
+
