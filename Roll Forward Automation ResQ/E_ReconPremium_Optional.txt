@@ -1,0 +1,234 @@
+'Aktifkan Tools - References berikut
+'- ResQ3 Automation Tools
+'- Microsoft ActiveX Data Object 6.1 Library
+'Masukkan baris terakhir di Premium
+Private Const LastRow = 63
+Private Const ProjectName = "202503"
+Private Const PathName = "\\[Folder Name]\IBNR\" & ProjectName & "\Compiled\"
+
+Sub VecFormula()
+    
+    SwitchOff (True)
+    'timer
+    Dim startTime As Date
+    Dim endTime As Date
+    Dim elapsedTime As Double
+    Dim formattedTime As String
+    startTime = Now
+    
+    Dim wbEP As Workbook
+    Dim wsResQ As Worksheet
+    
+    Dim wbActive As Workbook
+    Dim TriName As String
+    Dim GrsNet(1 To 2) As String
+    Dim ColNo As Integer
+    Dim Rumus As String
+    Dim iRowSummary As Integer: iRowSummary = 1
+    Dim difference As Variant: difference = VecDifference(LastRow - 1)
+    Dim rsSheets As ADODB.Recordset: Set rsSheets = AddSheets
+    
+    Set wbEP = Workbooks.Open(PathName & "Earned Premium.xlsx", ReadOnly:=True, UpdateLinks:=0)
+    
+    Set wsResQ = wbEP.Worksheets("ResQ Settings")
+    
+    If wsResQ Is Nothing Then
+        MsgBox "Connect and Login ke ResQ terlebih dahulu melalui Add-ins"
+        Exit Sub
+    End If
+    
+    
+    GrsNet(1) = "Gross"
+    GrsNet(2) = "Net"
+    
+    For Each GrossNet In GrsNet
+        Debug.Print GrossNet
+        'Looping sheets
+        rsSheets.MoveFirst
+        Do While Not rsSheets.EOF
+            'Untuk Net selain Health/Various EComm, ColNo ditambah 12. Untuk Health/Various EComm, ColNo ditambah 1
+            ColNo = rsSheets.Fields("Column No").Value
+            If GrossNet = "Net" And ColNo < 20 Then
+                ColNo = ColNo + 12
+            ElseIf GrossNet = "Net" And ColNo > 20 Then
+                ColNo = ColNo + 1
+            End If
+            'Rumus untuk menarik vector dari ResQ
+            Rumus = "=ResQVec(""" & GrossNet & "\" & rsSheets.Fields("Reserving Class").Value & """,""Ultimate Premiums"",,""" & ProjectName & """)"
+            
+            With wbEP.Worksheets("EP")
+                'Assigning rumus ResQ dan selisih
+                .Range(.Cells(1 * LastRow + 2, ColNo), .Cells(2 * LastRow, ColNo)).FormulaArray = Rumus
+                .Range(.Cells(2 * LastRow + 2, ColNo), .Cells(3 * LastRow, ColNo)).FormulaR1C1 = difference
+                
+                'Summary di sheet ResQ Settings
+                wsResQ.Cells(iRowSummary, 5).Value = GrossNet & "\" & rsSheets.Fields("Reserving Class").Value
+                wsResQ.Cells(iRowSummary, 6).Value = SumAbsolute(.Range(.Cells(2 * LastRow + 2, ColNo), .Cells(3 * LastRow, ColNo)))
+            End With
+            iRowSummary = iRowSummary + 1
+            rsSheets.MoveNext
+        Loop
+    Next GrossNet
+    
+    'end time
+    endTime = Now
+    'elapsed time
+    elapsedTime = DateDiff("s", startTime, endTime)
+    formattedTime = FormatTime(elapsedTime)
+    MsgBox "Done!" & vbCrLf & "Running time: " & formattedTime
+    SwitchOff (False)
+End Sub
+Private Function AddSheets() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Column No", adInteger
+        .Fields.Append "Reserving Class", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Column No").Value = 3
+        .Fields("Reserving Class").Value = "Auto\OD\Partial Loss"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 6
+        .Fields("Reserving Class").Value = "Fire"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 7
+        .Fields("Reserving Class").Value = "Engineering"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 4
+        .Fields("Reserving Class").Value = "Marine\E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 5
+        .Fields("Reserving Class").Value = "Marine\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 9
+        .Fields("Reserving Class").Value = "PA\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 10
+        .Fields("Reserving Class").Value = "PA\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 8
+        .Fields("Reserving Class").Value = "Liability"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 11
+        .Fields("Reserving Class").Value = "Travel\Retail"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 12
+        .Fields("Reserving Class").Value = "Travel\Commercial"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 13
+        .Fields("Reserving Class").Value = "Trade Credit"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 27
+        .Fields("Reserving Class").Value = "Health"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 14
+        .Fields("Reserving Class").Value = "Various\Non E-Commerce"
+        .Update
+        
+        .AddNew
+        .Fields("Column No").Value = 29
+        .Fields("Reserving Class").Value = "Various\Commerce"
+        .Update
+    End With
+    Set AddSheets = rs
+End Function
+Private Function VecDifference(rows As Integer) As Variant
+    Dim arr() As Variant
+    ReDim arr(1 To rows, 1 To 1)
+    Dim i As Integer
+    
+    'Data pertama di ResQ yaitu 2009Q4 = 0 karena tidak ada datanya di Compiled
+    arr(1, 1) = "No Data"
+    For i = 2 To rows
+        arr(i, 1) = "=R[-" & 2 * rows & "]C-R[-" & rows & "]C"
+    Next i
+    
+    ' Return the vertical array
+    VecDifference = arr
+End Function
+Private Function SumAbsolute(rng As Range) As Double
+    Dim jumlah As Double: jumlah = 0
+    Dim sel As Range
+    For Each sel In rng
+        If IsNumeric(sel.Value) Then
+            jumlah = jumlah + Abs(sel.Value)
+        End If
+    Next sel
+    SumAbsolute = jumlah
+End Function
+Private Function FormatTime(ByVal seconds As Double) As String
+    Dim hours As Long
+    Dim minutes As Long
+    Dim remainingSeconds As Long
+    
+    ' Calculate hours, minutes, and remaining seconds
+    hours = seconds \ 3600
+    seconds = seconds Mod 3600
+    minutes = seconds \ 60
+    remainingSeconds = seconds Mod 60
+    
+    ' Format the time as "hour:minute:second"
+    FormatTime = Format(hours, "00") & ":" & Format(minutes, "00") & ":" & Format(remainingSeconds, "00")
+End Function
+Private Sub SwitchOff(bSwitchOff As Boolean)
+    Dim ws As Worksheet
+    
+    With Application
+        If bSwitchOff Then
+            'OFF
+            .Calculation = xlCalculationManual
+            .ScreenUpdating = False
+            .EnableAnimations = False
+         
+            'switch off display pagebreaks for all worksheets
+            For Each ws In ThisWorkbook.Worksheets
+                ws.DisplayPageBreaks = False
+            Next ws
+        Else
+            'ON
+            .Calculation = xlCalculationAutomatic
+            .ScreenUpdating = True
+            .EnableAnimations = True
+        End If
+    End With
+End Sub
+Private Function WorksheetExists(wsName As String) As Boolean
+    Dim ws As Worksheet
+    WorksheetExists = False ' Set default value to False
+    
+    ' Loop through all worksheets in the workbook
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name = wsName Then
+            WorksheetExists = True ' If worksheet is found, return True
+            Exit Function ' Exit once the worksheet is found
+        End If
+    Next ws
+End Function
