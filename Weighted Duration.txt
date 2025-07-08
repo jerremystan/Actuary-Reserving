@@ -1,0 +1,664 @@
+Private Const TemplateFile = "\[Folder Location]\ALM\2025\202503\Weighted Duration - 202503 v.1.00.xlsx"
+Private Const Valuation = "03/31/2025"
+Private Const GrossUPRFile = "\[Folder Location]\PREMIUM RESERVE\2025\202503=Premium Reserve\XXX\75%\202503 Gross_120 biz type_New Template 2025_ IDR NON v.2.00 (spot rate).xlsx"
+Private Const NetUPRFile = "\[Folder Location]\PREMIUM RESERVE\2025\202503=Premium Reserve\XXX\75%\202503 Net_120 biz type_New Template 2025_ IDR NON v.2.00 (spot rate).xlsx"
+Private Const GrossUPRFileManual = "\[Folder Location]\PREMIUM RESERVE\2025\202503=Premium Reserve\XXX\75%\202503 Gross_120 biz type_New Template 2025_ IDR NON (spot rate)_Manual v1.00.xlsx"
+Private Const NetUPRFileManual = "\[Folder Location]\PREMIUM RESERVE\2025\202503=Premium Reserve\XXX\75%\202503 Net_120 biz type_New Template 2025_ IDR NON (spot rate)_Manual v1.00.xlsx"
+
+'MACRO INI HANYA UNTUK REFRESH DATA DI SHEET GROSS DAN NET
+
+Private Sub Weighted()
+
+    Dim wb As Workbook
+    Dim wbG As Workbook
+    Dim wbGM As Workbook
+    Dim wbN As Workbook
+    Dim wbNM
+    
+    Dim ws As Worksheet
+    Dim wsG As Worksheet
+    Dim wsGM As Worksheet
+    Dim wsN As Worksheet
+    Dim wsNM As Worksheet
+    
+    Dim lastRowNet As Long
+    Dim lastColNet As Long
+    Dim lastRow As Long
+    Dim lastTemp As Long
+    
+    Set wb = Workbooks.Open(TemplateFile, UpdateLinks:=0)
+    
+'Net
+    Set wbN = Workbooks.Open(NetUPRFile, UpdateLinks:=0)
+    Set wbNM = Workbooks.Open(NetUPRFileManual, UpdateLinks:=0)
+    Set ws = wb.Sheets("Net")
+    
+    'Valuation Update & Clear Sheet
+    ws.Cells(1, 2).Value = Valuation
+    lastRowNet = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    'lastColNet = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+    
+    ws.Range("A4:N" & lastRowNet).ClearContents
+    
+    'Net - IDR
+    Set wsN = wbN.Sheets("IDR")
+    lastRow = wsN.Cells(wsN.Rows.Count, "A").End(xlUp).Row
+        
+        'PolicyNo
+        wsN.Range("G11:G" & lastRow).Copy
+        ws.Range("A3").PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsN.Range("M11:M" & lastRow).Copy
+        ws.Range("B3").PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsN.Range("R11:R" & lastRow).Copy
+        ws.Range("C3").PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsN.Range("S11:S" & lastRow).Copy
+        ws.Range("D3").PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsN.Range("O11:O" & lastRow).Copy
+        ws.Range("E3").PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsN.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F3").PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsN.Range("C11:C" & lastRow).Copy
+        ws.Range("G3").PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsN.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H3").PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsN.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I3").PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsN.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J3").PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsN.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K3").PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsN.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L3").PasteSpecial xlPasteValues
+        
+    'Net - IDR Manual
+    Set wsNM = wbNM.Sheets("IDR")
+    lastRow = wsNM.Cells(wsNM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+        
+        'PolicyNo
+        wsNM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsNM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsNM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsNM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsNM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsNM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsNM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsNM.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsNM.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsNM.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsNM.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsNM.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+        
+    'Net - Non IDR
+    Set wsN = wbN.Sheets("Non IDR")
+    lastRow = wsN.Cells(wsN.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+        
+        'PolicyNo
+        wsN.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsN.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsN.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsN.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsN.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsN.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsN.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsN.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsN.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsN.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsN.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsN.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+        
+    'Net - Non IDR Manual
+    Set wsNM = wbNM.Sheets("Non IDR")
+    lastRow = wsNM.Cells(wsNM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+        
+        'PolicyNo
+        wsNM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsNM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsNM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsNM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsNM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsNM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsNM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsNM.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsNM.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsNM.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsNM.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsNM.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+        
+    'Net - XOL
+    Set wsN = wbN.Sheets("XOL")
+    lastRow = wsN.Cells(wsN.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+        
+        'PolicyNo
+        wsN.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsN.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsN.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsN.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsN.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsN.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsN.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsN.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsN.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsN.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsN.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsN.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+        
+    'Net - XOL Manual
+    Set wsNM = wbNM.Sheets("XOL")
+    lastRow = wsNM.Cells(wsNM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+        
+        'PolicyNo
+        wsNM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+        
+        'ExpiryDate
+        wsNM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP from date
+        wsNM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+        
+        'GWP to date
+        wsNM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Long Term PF
+        wsNM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Class Modified
+        wsNM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Contract Type
+        wsNM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR ST
+        wsNM.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+        
+        'UPR LT
+        wsNM.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm ST
+        wsNM.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Comm LT
+        wsNM.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Net UPR
+        wsNM.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+
+'Gross
+    Set wbG = Workbooks.Open(GrossUPRFile, UpdateLinks:=0)
+    Set wbGM = Workbooks.Open(GrossUPRFileManual, UpdateLinks:=0)
+    Set ws = wb.Sheets("Gross")
+
+    'Valuation Update & Clear Sheet
+    ws.Cells(1, 2).Value = Valuation
+    lastRowGross = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    'lastColGross = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+
+    ws.Range("A4:N" & lastRowGross).ClearContents
+
+    'Gross - IDR
+    Set wsG = wbG.Sheets("IDR")
+    lastRow = wsG.Cells(wsG.Rows.Count, "A").End(xlUp).Row
+
+        'PolicyNo
+        wsG.Range("G11:G" & lastRow).Copy
+        ws.Range("A3").PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsG.Range("M11:M" & lastRow).Copy
+        ws.Range("B3").PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsG.Range("R11:R" & lastRow).Copy
+        ws.Range("C3").PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsG.Range("S11:S" & lastRow).Copy
+        ws.Range("D3").PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsG.Range("O11:O" & lastRow).Copy
+        ws.Range("E3").PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsG.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F3").PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsG.Range("C11:C" & lastRow).Copy
+        ws.Range("G3").PasteSpecial xlPasteValues
+
+        'UPR ST
+        wsG.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H3").PasteSpecial xlPasteValues
+
+        'UPR LT
+        wsG.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I3").PasteSpecial xlPasteValues
+
+        'Comm ST
+        wsG.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J3").PasteSpecial xlPasteValues
+
+        'Comm LT
+        wsG.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K3").PasteSpecial xlPasteValues
+
+        'Gross UPR
+        wsG.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L3").PasteSpecial xlPasteValues
+        
+    'Gross - IDR Manual
+    Set wsGM = wbGM.Sheets("IDR")
+    lastRow = wsGM.Cells(wsGM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+
+        'PolicyNo
+        wsGM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsGM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsGM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsGM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsGM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsGM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsGM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR ST
+        wsGM.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR LT
+        wsGM.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm ST
+        wsGM.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm LT
+        wsGM.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+
+        'Gross UPR
+        wsGM.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+
+    'Gross - Non IDR
+    Set wsG = wbG.Sheets("Non IDR")
+    lastRow = wsG.Cells(wsG.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+
+        'PolicyNo
+        wsG.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsG.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsG.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsG.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsG.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsG.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsG.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR ST
+        wsG.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR LT
+        wsG.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm ST
+        wsG.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm LT
+        wsG.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+
+        'Gross UPR
+        wsG.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+    
+    'Gross - Non IDR Manual
+    Set wsGM = wbGM.Sheets("Non IDR")
+    lastRow = wsGM.Cells(wsGM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+
+        'PolicyNo
+        wsGM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsGM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsGM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsGM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsGM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsGM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsGM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR ST
+        wsGM.Range("CC11:CC" & lastRow).Copy
+        ws.Range("H" & lastTemp).PasteSpecial xlPasteValues
+
+        'UPR LT
+        wsGM.Range("CD11:CD" & lastRow).Copy
+        ws.Range("I" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm ST
+        wsGM.Range("DC11:DC" & lastRow).Copy
+        ws.Range("J" & lastTemp).PasteSpecial xlPasteValues
+
+        'Comm LT
+        wsGM.Range("DD11:DD" & lastRow).Copy
+        ws.Range("K" & lastTemp).PasteSpecial xlPasteValues
+
+        'Gross UPR
+        wsGM.Range("BI11:BI" & lastRow).Copy
+        ws.Range("L" & lastTemp).PasteSpecial xlPasteValues
+
+
+    'Gross - XOL
+    Set wsG = wbN.Sheets("XOL")
+    lastRow = wsG.Cells(wsG.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+
+        'PolicyNo
+        wsG.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsG.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsG.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsG.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsG.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsG.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsG.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+        'Unearned Duration
+        ws.Range("M" & lastTemp).Value = 0
+        
+        'Weighted Duration
+        ws.Range("N" & lastTemp).Value = 0
+        
+    'Gross - XOL Manual
+    Set wsGM = wbNM.Sheets("XOL")
+    lastRow = wsGM.Cells(wsGM.Rows.Count, "A").End(xlUp).Row
+    lastTemp = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row + 1
+
+        'PolicyNo
+        wsGM.Range("G11:G" & lastRow).Copy
+        ws.Range("A" & lastTemp).PasteSpecial xlPasteValues
+
+        'ExpiryDate
+        wsGM.Range("M11:M" & lastRow).Copy
+        ws.Range("B" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP from date
+        wsGM.Range("R11:R" & lastRow).Copy
+        ws.Range("C" & lastTemp).PasteSpecial xlPasteValues
+
+        'GWP to date
+        wsGM.Range("S11:S" & lastRow).Copy
+        ws.Range("D" & lastTemp).PasteSpecial xlPasteValues
+
+        'Long Term PF
+        wsGM.Range("O11:O" & lastRow).Copy
+        ws.Range("E" & lastTemp).PasteSpecial xlPasteValues
+
+        'Class Modified
+        wsGM.Range("BZ11:BZ" & lastRow).Copy
+        ws.Range("F" & lastTemp).PasteSpecial xlPasteValues
+
+        'Contract Type
+        wsGM.Range("C11:C" & lastRow).Copy
+        ws.Range("G" & lastTemp).PasteSpecial xlPasteValues
+        
+'        'Unearned Duration
+'        ws.Range("M" & lastTemp).Value = 0
+'
+'        'Weighted Duration
+'        ws.Range("N" & lastTemp).Value = 0
+
+
+End Sub
+
