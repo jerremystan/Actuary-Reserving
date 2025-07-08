@@ -1,0 +1,297 @@
+
+Private Const InputDir = "\[Folder Location]\Temporary Data\Stan\Adjusted Claim Liabilities\Input-IBNR\"
+Private Const OutputDir = "\[Folder Location]\Temporary Data\Stan\Adjusted Claim Liabilities\Output-IBNR\"
+Private Const PathFile = "\[Folder Location]\Temporary Data\Stan\Adjusted Claim Liabilities\"
+Private Const ModelIBNR = "02. XXX RR 2023 (Data as at September 2023) v.12.00_no ML.xlsm"
+Private Const YYYYMM = "2023-11"
+Private Const RowMinus = 0
+
+
+Private Const AdjTemp = "AdjustedClaim Liabilities at 75% level of sufficiency YYYY-MM working.xlsx"
+Private Const AdjSum = "AdjustedClaim Liabilities at 75_ level of sufficiency YYYY-MM.xlsx"
+
+Public Sub ConditionalDiscountedCF()
+    
+    Dim rsSheets As ADODB.Recordset
+    Dim wb As Workbook
+    Dim WsX As Worksheet
+    Dim i As Integer
+    Dim rowName As Integer
+    Dim NewName As String
+    Dim NewFile As String
+    Dim GNArr As Variant
+    Dim sheetNama As String
+    Dim countRow As Integer
+    Dim totalRow As Integer
+    
+    GNArr = Array("Gross", "Net")
+    
+    Set wb = Workbooks.Open(InputDir & ModelIBNR, UpdateLinks:=0)
+    countRow = 0
+    For Each GN In GNArr
+        'Populating data
+        Set rsSheets = AddSheetsGross
+        rsSheets.MoveFirst
+        Set WsX = wb.Sheets("Summary - " & GN & " (Group)")
+        WsX.Cells(11, 16).Value = "Adjusted " & GN & " Claim Liabilities at 75% level of sufficiency (l.o.s.)"
+        If Not rsSheets.EOF Then
+            Do While Not rsSheets.EOF
+                countRow = countRow + 1
+                If GN = "Gross" Then
+                    If rsSheets.Fields("Sheet Name").Value = "Auto" Then
+                        sheetNama = rsSheets.Fields("Sheet Name").Value & "_Gross"
+                    Else
+                        sheetNama = rsSheets.Fields("Sheet Name").Value & "_Grs"
+                    End If
+                Else
+                    sheetNama = rsSheets.Fields("Sheet Name").Value & "_" & GN
+                End If
+            
+                rowName = rsSheets.Fields("Summary Row").Value - RowMinus
+                
+                WsX.Range("P" & rowName).Formula = "=IFERROR(SUM('" & sheetNama & "'!$C$329:$F$329)*$N" & rowName & ",0)"
+                
+                rsSheets.MoveNext
+            Loop
+        End If
+        
+    Next GN
+    
+    totalRow = (countRow / 2) + 12 - RowMinus + 1
+    
+    NewFile = Replace(ModelIBNR, ".00", ".01")
+    NewName = OutputDir & NewFile
+
+    wb.SaveAs Filename:=NewName, FileFormat:=xlOpenXMLWorkbookMacroEnabled
+    
+    Dim Adwb As Workbook
+    Dim wsAdj As Worksheet
+    Dim tempRow As Integer
+    
+    Debug.Print totalRow
+    
+    Set Adwb = Workbooks.Open(PathFile & AdjTemp, UpdateLinks:=0)
+    
+    For Each GN In GNArr
+    
+        Set rsSheets = AddSheetsGross
+        rsSheets.MoveFirst
+        Set wsAdj = Adwb.Sheets(GN)
+        wsAdj.Cells(2, 1).Value = NewFile
+        wsAdj.Range("B7:D21").ClearContents
+        tempRow = 0
+        If Not rsSheets.EOF Then
+            Do While Not rsSheets.EOF
+            
+                tempRow = tempRow + 1
+                rowName = rsSheets.Fields("Summary Row").Value - RowMinus
+                
+                wsAdj.Range("B" & tempRow + 6).Formula = "='" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!N" & rowName
+                wsAdj.Range("C" & tempRow + 6).Formula = "='" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!O" & rowName
+                wsAdj.Range("D" & tempRow + 6).Formula = "='" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!P" & rowName
+                
+                rsSheets.MoveNext
+            Loop
+        End If
+        
+        wsAdj.Range("B" & 23).Formula = "=B22 - '" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!N" & totalRow
+        wsAdj.Range("C" & 23).Formula = "=C22 - '" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!O" & totalRow
+        wsAdj.Range("D" & 23).Formula = "=D22 - SUM('" & OutputDir & "[" & NewFile & "]Summary - " & GN & " (Group)'!P" & 13 - RowMinus & ":P" & totalRow - 1 & ")"
+        
+    
+    Next GN
+    
+    Dim AllWb As Workbook
+    Dim AllSWs As Worksheet
+    Dim AllTWs As Worksheet
+    Dim MeWb As Workbook
+    Dim MeWs As Worksheet
+    Dim lastRow As Integer
+    Dim lastRowx As Integer
+    Dim lastCol As Integer
+    Dim newMonth As String
+    Dim NewAdjName As String
+    
+    Set AllWb = Workbooks.Open(PathFile & "OS Summary All.xlsx", UpdateLinks:=0)
+    Set AllSWs = AllWb.Sheets("OS Summary All")
+    
+    Set AllTWs = Adwb.Sheets("All")
+    
+    AllTWs.Range("A1:F1048576").ClearContents
+    AllTWs.Range("G3:G1048576").ClearContents
+    
+    lastRow = AllSWs.Cells(AllSWs.Rows.Count, "A").End(xlUp).Row
+    lastCol = AllSWs.Cells(1, AllSWs.Columns.Count).End(xlToLeft).Column
+    
+    If AllSWs.AutoFilterMode Then
+        AllSWs.AutoFilterMode = False
+    End If
+    
+    newMonth = Replace(YYYYMM, "-", "")
+    
+    AllSWs.Range(AllSWs.Cells(1, 1), AllSWs.Cells(lastRow, lastCol)).AutoFilter Field:=1, Criteria1:=newMonth
+    
+    AllSWs.Range(AllSWs.Cells(1, 1), AllSWs.Cells(lastRow, lastCol)).SpecialCells(xlCellTypeVisible).Copy
+    AllTWs.Range("A1").PasteSpecial Paste:=xlPasteValues
+    
+    lastRowx = AllTWs.Cells(AllTWs.Rows.Count, "A").End(xlUp).Row
+    AllTWs.Range("G2").Copy
+    AllTWs.Range("G3:G" & lastRowx).PasteSpecial xlPasteFormulas
+    
+    AllWb.Close SaveChanges:=False
+    
+    
+    Set AllWb = Workbooks.Open(PathFile & "OS Summary Marine Ecomm.xlsx", UpdateLinks:=0)
+    Set AllSWs = AllWb.Sheets("OS Summary Marine Ecomm")
+    
+    Set AllTWs = Adwb.Sheets("MEcomm")
+    
+    AllTWs.Range("A1:F1048576").ClearContents
+    AllTWs.Range("G3:G1048576").ClearContents
+    
+    lastRow = AllSWs.Cells(AllSWs.Rows.Count, "A").End(xlUp).Row
+    lastCol = AllSWs.Cells(1, AllSWs.Columns.Count).End(xlToLeft).Column
+    
+    If AllSWs.AutoFilterMode Then
+        AllSWs.AutoFilterMode = False
+    End If
+    
+    newMonth = Replace(YYYYMM, "-", "")
+    
+    AllSWs.Range(AllSWs.Cells(1, 1), AllSWs.Cells(lastRow, lastCol)).AutoFilter Field:=1, Criteria1:=newMonth
+    
+    AllSWs.Range(AllSWs.Cells(1, 1), AllSWs.Cells(lastRow, lastCol)).SpecialCells(xlCellTypeVisible).Copy
+    AllTWs.Range("A1").PasteSpecial Paste:=xlPasteValues
+    
+    NewAdjFile = Replace(AdjTemp, "YYYY-MM", YYYYMM)
+    NewName = OutputDir & NewAdjFile
+    Adwb.SaveAs Filename:=NewName, FileFormat:=xlOpenXMLWorkbook
+    
+    Dim WbSum As Workbook
+    Dim WsSum As Worksheet
+    Dim NewSumFile As String
+    
+    Set WbSum = Workbooks.Open(PathFile & AdjSum, UpdateLinks:=0)
+    Set WsSum = WbSum.Sheets("Claim Liabilities")
+    
+    WsSum.Range("C4:D17").ClearContents
+    
+    For i = 1 To 14
+        
+        If i > 5 Then
+            
+            WsSum.Range("C" & 3 + i).Formula = "='" & OutputDir & "[" & NewAdjFile & "]Gross'!G" & 7 + i
+            WsSum.Range("D" & 3 + i).Formula = "='" & OutputDir & "[" & NewAdjFile & "]Net'!G" & 7 + i
+        
+        Else
+            
+            WsSum.Range("C" & 3 + i).Formula = "='" & OutputDir & "[" & NewAdjFile & "]Gross'!G" & 6 + i
+            WsSum.Range("D" & 3 + i).Formula = "='" & OutputDir & "[" & NewAdjFile & "]Net'!G" & 6 + i
+        
+        End If
+    
+    Next i
+    
+    NewSumFile = Replace(AdjSum, "YYYY-MM", YYYYMM)
+    NewName = OutputDir & NewSumFile
+    WbSum.SaveAs Filename:=NewName, FileFormat:=xlOpenXMLWorkbook
+    
+    AllWb.Close SaveChanges:=False
+    wb.Close SaveChanges:=False
+    Adwb.Close SaveChanges:=False
+    WbSum.Close SaveChanges:=False
+    
+    MsgBox "End"
+
+End Sub
+Private Function AddSheetsGross() As ADODB.Recordset
+    Dim rs As ADODB.Recordset
+    Set rs = New ADODB.Recordset
+    
+    With rs
+        Set .ActiveConnection = Nothing
+        .CursorLocation = adUseClient
+        .Fields.Append "Sheet Name", adVarChar, 200
+        .Fields.Append "Summary Row", adVarChar, 200
+        .Open
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Auto"
+        .Fields("Summary Row").Value = "13"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Eng-All"
+        .Fields("Summary Row").Value = "14"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Fire-All"
+        .Fields("Summary Row").Value = "15"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-ECommerce"
+        .Fields("Summary Row").Value = "16"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Marine-Other"
+        .Fields("Summary Row").Value = "17"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial"
+        .Fields("Summary Row").Value = "18"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Liability-All"
+        .Fields("Summary Row").Value = "19"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Commercial"
+        .Fields("Summary Row").Value = "20"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "PA-Retail"
+        .Fields("Summary Row").Value = "21"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Commercial"
+        .Fields("Summary Row").Value = "22"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Travel-Retail"
+        .Fields("Summary Row").Value = "23"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "TradeCredit-All"
+        .Fields("Summary Row").Value = "24"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-All"
+        .Fields("Summary Row").Value = "25"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Health-All"
+        .Fields("Summary Row").Value = "26"
+        .Update
+        
+        .AddNew
+        .Fields("Sheet Name").Value = "Various-Ecommerce"
+        .Fields("Summary Row").Value = "27"
+        .Update
+        
+    End With
+    
+    Set AddSheetsGross = rs
+End Function
+
